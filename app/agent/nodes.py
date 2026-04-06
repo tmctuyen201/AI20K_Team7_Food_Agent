@@ -153,6 +153,10 @@ def search_places(
 
     Skipped entirely when intent is None (off-topic message) or "select".
     """
+    import sys
+    sys.stderr.write(f"[DEBUG search_places] ENTERING intent={state.get('intent')} keyword={state.get('keyword')}\n")
+    sys.stderr.flush()
+
     step = _next_step()
 
     if step_callback:
@@ -195,6 +199,7 @@ def search_places(
     # Convert raw dicts to Place model objects
     places = [Place(**r) for r in raw_results]
     state["places"] = places
+    state["search_done"] = True  # flag for guardrail: search has run
 
     # Track shown place IDs to avoid duplicates
     existing_ids: set[str] = set(state.get("shown_place_ids", []))
@@ -203,6 +208,17 @@ def search_places(
     state["shown_place_ids"] = list(existing_ids)
 
     state["messages"].append(f"search_places: found {len(places)} places")
+
+    # DEBUG: log raw_results before conversion
+    from app.core.logging import get_logger
+    _log = get_logger("foodie.nodes")
+    _log.debug(
+        "search_places_result",
+        keyword=keyword,
+        radius=radius,
+        raw_results_count=len(raw_results),
+        first_place=raw_results[0].get("name") if raw_results else None,
+    )
 
     if step_callback:
         step_callback({
