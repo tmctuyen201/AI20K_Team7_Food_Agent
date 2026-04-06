@@ -8,6 +8,7 @@ from typing import Any, AsyncIterator
 
 from app.agent.prompt import build_system_prompt, build_guardrail_prompt
 from app.agent.state import AgentState, ToolCall
+from app.core.guardrail import check_guardrails
 from app.core.logging import get_agent_logger, get_llm_logger, get_tool_logger, log_tool_call, log_tool_result, log_agent_step
 
 agent_logger = get_agent_logger()

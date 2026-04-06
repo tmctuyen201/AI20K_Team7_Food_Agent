@@ -15,6 +15,7 @@ result is yielded as a single {"type": "compare_result", ...} event.
 from __future__ import annotations
 
 import asyncio
+import datetime
 from typing import AsyncGenerator, Callable, Optional
 
 from app.agent.nodes import (
@@ -303,6 +304,9 @@ class AgentRunner:
         model: str | None = None,
     ) -> AsyncGenerator[dict, None]:
         """LangGraph pipeline with streaming step events via step callbacks."""
+        import sys as _sys
+        print(f"[!!!] _run_v2 ENTRY user_message={user_message}", flush=True)
+        _sys.stdout.flush()
         from queue import Queue, Empty
         from threading import Event as ThreadEvent
 
@@ -353,62 +357,81 @@ class AgentRunner:
 
         def run_graph_blocking() -> AgentState:
             """Run the node pipeline synchronously in the executor thread."""
-            initial_state: AgentState = {
-                "user_id": self.user_id,
-                "session_id": self.session_id,
-                "user_message": user_message,
-                "intent": None,
-                "location": None,
-                "keyword": None,
-                "places": [],
-                "scored_places": [],
-                "shown_place_ids": [],
-                "rejection_count": self._rejection_count,
-                "next_page_token": None,
-                "last_radius": 2000,
-                "messages": [],
-                "is_complete": False,
-            }
+            import sys
+            sys.stderr.write(f"[!!!] run_graph_blocking CALLED\n")
+            sys.stderr.flush()
+            try:
+                initial_state: AgentState = {
+                    "user_id": self.user_id,
+                    "session_id": self.session_id,
+                    "user_message": user_message,
+                    "intent": None,
+                    "location": None,
+                    "keyword": None,
+                    "places": [],
+                    "scored_places": [],
+                    "shown_place_ids": [],
+                    "rejection_count": self._rejection_count,
+                    "next_page_token": None,
+                    "last_radius": 2000,
+                    "messages": [],
+                    "is_complete": False,
+                    "search_done": False,
+                }
 
-            state = initial_state
-            # Apply each node in sequence, passing the step callback
-            state = parse_intent(state, step_callback=step_callback)
+                state = initial_state
+                # Apply each node in sequence, passing the step callback
+                state = parse_intent(state, step_callback=step_callback)
 
-            # Non-food intent (e.g. "hello") — skip location/search, go straight to LLM
-            if state.get("intent") is None:
-                state["is_complete"] = True
-                state["messages"].append("run_graph_blocking: intent=None, skipped location/search")
+                # Non-food intent (e.g. "hello") — skip location/search, go straight to LLM
+                if state.get("intent") is None:
+                    state["is_complete"] = True
+                    state["messages"].append("run_graph_blocking: intent=None, skipped location/search")
+                    graph_done.set()
+                    print("Non-food intent detected, skipping location and search nodes.")
+                    return state
+
+                state = get_location(state, step_callback=step_callback)
+
+                # ── Guardrail: ambiguous / mock location ONLY (no search results needed) ──
+                from app.core.guardrail import check_guardrails, GuardrailResult
+
+                guardrail_after_location = check_guardrails(state)
+                if guardrail_after_location.triggered:
+                    state["guardrail_triggered"] = guardrail_after_location.name
+                    state["guardrail_message"] = guardrail_after_location.message
+                    state["is_complete"] = True
+                    state = _inject_guardrail_state(state, guardrail_after_location, step_callback)
+                    graph_done.set()
+                    return state
+
+                # ALWAYS run search first — guardrail checks (zero / midnight)
+                # need populated places to evaluate correctly
+                sys.stderr.write(f"[DEBUG runner] About to call search_places\n")
+                sys.stderr.flush()
+                state = search_places(state, step_callback=step_callback)
+                sys.stderr.write(f"[DEBUG runner] After search_places, places={len(state.get('places') or [])}, scored={len(state.get('scored_places') or [])}\n")
+                sys.stderr.flush()
+                state = score_places(state, step_callback=step_callback)
+                sys.stderr.write(f"[DEBUG runner] After score_places, scored={len(state.get('scored_places') or [])}\n")
+                sys.stderr.flush()
+
+                # ── Guardrail: zero-results / midnight AFTER search has run ─────────
+                guardrail_after_scoring = check_guardrails(state)
+                if guardrail_after_scoring.triggered:
+                    state["guardrail_triggered"] = guardrail_after_scoring.name
+                    state["guardrail_message"] = guardrail_after_scoring.message
+                    state["is_complete"] = True
+                    state = _inject_guardrail_state(state, guardrail_after_scoring, step_callback)
+
                 graph_done.set()
-                print("Non-food intent detected, skipping location and search nodes.")
                 return state
-
-            state = get_location(state, step_callback=step_callback)
-
-            # ── Guardrail: check ambiguous / mock location after get_location ───
-            from app.core.guardrail import check_guardrails
-
-            guardrail_after_location = check_guardrails(state)
-            if guardrail_after_location.triggered:
-                state["guardrail_triggered"] = guardrail_after_location.name
-                state["guardrail_message"] = guardrail_after_location.message
-                state["is_complete"] = True
-                state = _inject_guardrail_state(state, guardrail_after_location, step_callback)
+            except Exception as exc:
+                import traceback
+                sys.stderr.write(f"[!!!] EXCEPTION in run_graph_blocking: {exc}\n")
+                traceback.print_exc()
                 graph_done.set()
-                return state
-
-            state = search_places(state, step_callback=step_callback)
-            state = score_places(state, step_callback=step_callback)
-
-            # ── Guardrail: check zero-results / midnight after scoring ───────────
-            guardrail_after_scoring = check_guardrails(state)
-            if guardrail_after_scoring.triggered:
-                state["guardrail_triggered"] = guardrail_after_scoring.name
-                state["guardrail_message"] = guardrail_after_scoring.message
-                state["is_complete"] = True
-                state = _inject_guardrail_state(state, guardrail_after_scoring, step_callback)
-
-            graph_done.set()
-            return state
+                raise
 
         # Start graph run in thread pool
         loop = asyncio.get_running_loop()
@@ -464,6 +487,9 @@ class AgentRunner:
                 user_id=self.user_id,
                 session_id=self.session_id,
             )
+            # _inject_guardrail_state already yielded step-99 via the callback
+            # (visible to the frontend as a reasoning event), so only stream
+            # the message as a token here — do NOT yield it twice.
             for chunk in guardrail_msg:
                 yield {"type": "token", "data": chunk}
             yield {"type": "final_text", "text": guardrail_msg}

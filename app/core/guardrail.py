@@ -67,8 +67,15 @@ def _check_ambiguous_location(state: AgentState) -> GuardrailResult:
 
 def _check_mock_location(state: AgentState) -> GuardrailResult:
     """Mock Location guardrail: used mock data when no GPS/headers available."""
-    location = state.get("location") or {}
-    source = location.get("source", "") or state.get("location_source", "")
+    location = state.get("location")
+    # location can be a LatLng pydantic model, a dict, or None
+    if hasattr(location, "source"):
+        source = location.source
+    elif isinstance(location, dict):
+        source = location.get("source", "")
+    else:
+        source = ""
+    source = source or state.get("location_source", "")
 
     if source != "mock_data":
         return GuardrailResult()
@@ -94,8 +101,33 @@ def _check_mock_location(state: AgentState) -> GuardrailResult:
 
 def _check_zero_results(state: AgentState) -> GuardrailResult:
     """Zero Result guardrail: API returned no results."""
-    places = state.get("places_raw", [])
+    # v2 pipeline stores places as "places" (list) + "scored_places" (top-5)
+    # async/stream pipeline uses "places_raw" (dict list) + "places_scored"
+    # Guard checks all keys so either pipeline path triggers correctly
+    places_raw = state.get("places_raw", [])
+    places_v2 = state.get("places", [])
+    scored = state.get("scored_places", [])
+    places_scored = state.get("places_scored", [])
+
+    places: list = places_raw or places_v2 or scored or places_scored
+
+    # DEBUG
+    logger.debug(
+        "zero_check",
+        places_raw_len=len(places_raw),
+        places_v2_len=len(places_v2),
+        scored_len=len(scored),
+        places_scored_len=len(places_scored),
+        keyword=state.get("keyword", ""),
+        will_trigger=not places and bool(state.get("keyword")),
+    )
+
     keyword = state.get("keyword", "")
+
+    # Only trigger if search has actually run — guardrail fires during the
+    # location-only check before search_places() is even called
+    if state.get("search_done") is not True:
+        return GuardrailResult()
 
     if not places and keyword:
         logger.warning(
@@ -146,15 +178,29 @@ def _check_midnight_filter(state: AgentState) -> GuardrailResult:
     if not (hour >= 22 or hour < 5):
         return GuardrailResult()
 
-    places = state.get("places_raw", [])
-    open_places = [
-        p for p in places
-        if p.get("opening_hours", {}).get("open_now") is True
-        or p.get("open_now") is True
-    ]
+    # Guard checks all key variants so either pipeline path triggers correctly
+    places_raw = state.get("places_raw", [])
+    places_v2 = state.get("places", [])
+    scored = state.get("scored_places", [])
+    places_scored = state.get("places_scored", [])
+    places: list = places_raw or places_v2 or scored or places_scored
 
     if not places:
         return GuardrailResult()
+
+    # Only trigger if search has actually run
+    if state.get("search_done") is not True:
+        return GuardrailResult()
+
+    # open_now lives at the top-level of Place dicts and ScoredPlace objects
+    def _is_open(p) -> bool:
+        return bool(
+            getattr(p, "open_now", None) is True
+            or (isinstance(p, dict) and p.get("open_now") is True)
+            or (isinstance(p, dict) and p.get("opening_hours", {}).get("open_now") is True)
+        )
+
+    open_places = [p for p in places if _is_open(p)]
 
     total = len(places)
     open_count = len(open_places)
