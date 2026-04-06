@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from sqlalchemy import true
+
 from app.core.logging import get_logger
 
 logger = get_logger("foodie.tool_definitions")
@@ -45,59 +47,56 @@ def get_tool_definitions() -> list[dict]:
         {
             "type": "function",
             "function": {
-                "name": "search_google_places",
-                "description": "Search Google Places API for restaurants near a location. "
-                               "Returns a list of places with basic info.",
+                "name": "Search Places API",
+                "description": "Tìm kiếm quán ăn qua Google Maps dựa trên tọa độ và từ khóa. Trả về JSON gồm: tên, đánh giá, địa chỉ, khoảng cách và giá cả.",
                 "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "location": {
-                            "type": "object",
-                            "description": "Location dict with lat/lng",
-                        },
-                        "keyword": {
-                            "type": "string",
-                            "description": "Search keyword (e.g. 'phở', 'cơm tấm')",
-                        },
-                        "sort_by": {
-                            "type": "string",
-                            "enum": ["prominence", "distance"],
-                            "description": "How to rank results",
-                        },
-                        "radius": {
-                            "type": "integer",
-                            "description": "Search radius in meters",
-                        },
-                        "open_now": {
-                            "type": "boolean",
-                            "description": "Only return places open now",
-                        },
+                "type": "object",
+                "properties": {
+                    "lat": {
+                    "type": "number",
+                    "description": "Vĩ độ hiện tại của người dùng (Latitude)."
                     },
-                    "required": ["keyword"],
+                    "lng": {
+                    "type": "number",
+                    "description": "Kinh độ hiện tại của người dùng (Longitude)."
+                    },
+                    "keyword": {
+                    "type": "string",
+                    "description": "Từ khóa món ăn hoặc loại quán cần tìm (ví dụ: phở, sushi, pizza)."
+                    },
+                    "preference": {
+                    "type": "string",
+                    "enum": ["prominence", "distance"],
+                    "default": "prominence",
+                    "description": "Ưu tiên: 'prominence' để tìm quán ngon/nổi tiếng, 'distance' để tìm quán gần nhất."
+                    }
+                },
+                "required": ["lat", "lng", "keyword"]
                 },
             },
-        },
+            },
         {
             "type": "function",
             "function": {
                 "name": "calculate_scores",
-                "description": "Score and rank a list of places by quality and distance. "
-                               "Returns top 5 sorted places.",
+                "description": "Tính điểm và xếp hạng danh sách quán ăn dựa trên chất lượng và khoảng cách. "
+                               "Gợi ý: Tăng w_distance (0.7-0.9) nếu khách hàng đang đói/vội. "
+                               "Tăng w_quality (0.7-0.9) nếu khách hàng muốn tìm chỗ ngon nhất.",
                 "parameters": {
                     "type": "object",
                     "properties": {
                         "places": {
                             "type": "array",
                             "items": {"type": "object"},
-                            "description": "List of place objects from Google Places API",
+                            "description": "Danh sách các quán ăn thu được từ Search Places API",
                         },
-                        "weight_quality": {
+                        "w_quality": {
                             "type": "number",
-                            "description": "Weight for rating (0.0 - 1.0). Default: 0.6",
+                            "description": "Trọng số chất lượng (0.0 - 1.0). Mặc định: 0.6",
                         },
-                        "weight_distance": {
+                        "w_distance": {
                             "type": "number",
-                            "description": "Weight for proximity (0.0 - 1.0). Default: 0.4",
+                            "description": "Trọng số khoảng cách (0.0 - 1.0). Mặc định: 0.4",
                         },
                     },
                     "required": ["places"],
