@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
@@ -10,6 +9,7 @@ from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 from app.agent.runner import AgentRunner
 from app.core.auth import verify_token
 from app.db.models import ScoredPlace
+from app.tools.registry import get_tool_registry
 
 router = APIRouter()
 
@@ -48,6 +48,13 @@ class ConnectionManager:
                 "message": message,
             })
 
+    async def send_success(self, session_id: str, message: str) -> None:
+        if session_id in self.active_connections:
+            await self.active_connections[session_id].send_json({
+                "type": "success",
+                "message": message,
+            })
+
 
 manager = ConnectionManager()
 
@@ -56,20 +63,19 @@ manager = ConnectionManager()
 async def websocket_chat(websocket: WebSocket, token: str = Query(...)) -> None:
     """WebSocket endpoint for chat with streaming response.
 
-    Query parameters:
-        token: JWT access token containing user_id and session_id.
-
     Message protocol (client → server):
-        {"text": "I want Italian food near me"}
+        {"text": "I want Italian food"}         — chat message
+        {"type": "select_place", "place": {...}} — user clicked a place card
 
     Message protocol (server → client):
-        {"type": "token", "data": "..."}     — streaming token chunk
-        {"type": "done",  "data": {"places": [...]}}  — final response + places
-        {"type": "error", "message": "..."}  — error occurred
+        {"type": "token",   "data": "..."}              — streaming token chunk
+        {"type": "done",    "data": {"places": [...]}} — final response + places
+        {"type": "success", "message": "..."}           — action confirmed
+        {"type": "error",   "message": "..."}           — error occurred
     """
     session_id = ""
+    user_id = ""
     try:
-        # Verify token and extract payload
         payload = verify_token(token)
         user_id = str(payload.get("user_id", ""))
         session_id = str(payload.get("session_id", ""))
@@ -79,23 +85,48 @@ async def websocket_chat(websocket: WebSocket, token: str = Query(...)) -> None:
             return
 
         await manager.connect(websocket, session_id)
-
         agent_runner = AgentRunner(user_id=user_id, session_id=session_id)
 
         while True:
-            # Receive message from client
             raw = await websocket.receive_text()
             message = json.loads(raw)
-            user_text = str(message.get("text", "")).strip()
+            msg_type = str(message.get("type", "text"))
 
+            # ── select_place: user clicked a restaurant card ─────────────────
+            if msg_type == "select_place":
+                place_data = message.get("place") or {}
+                if not place_data:
+                    await manager.send_error(session_id, "Missing place data")
+                    continue
+
+                registry = get_tool_registry()
+                memory_tool = registry["save_user_selection"]
+                result = memory_tool._run(
+                    user_id=user_id,
+                    place_id=str(place_data.get("place_id", "")),
+                    name=str(place_data.get("name", "")),
+                    cuisine_type=str(place_data.get("cuisine_type") or ""),
+                    rating=float(place_data.get("rating") or 0.0),
+                )
+                if result.get("success"):
+                    await manager.send_success(
+                        session_id,
+                        f"Đã lưu lựa chọn: {place_data.get('name')} - Cám ơn bạn!",
+                    )
+                    # Reset rejection count on successful selection
+                    agent_runner.reset_rejection_count()
+                else:
+                    await manager.send_error(session_id, "Không lưu được lựa chọn")
+                continue
+
+            # ── text: normal chat message ─────────────────────────────────────
+            user_text = str(message.get("text", "")).strip()
             if not user_text:
                 continue
 
-            # Stream response token by token (use async run_async)
             async for token_text in agent_runner.run_async(user_text):
                 await manager.send_token(session_id, token_text)
 
-            # Send final payload with ranked places
             final_places = agent_runner.get_final_places()
             await manager.send_done(session_id, final_places)
 

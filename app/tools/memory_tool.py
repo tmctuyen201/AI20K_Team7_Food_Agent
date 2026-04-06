@@ -1,21 +1,38 @@
-"""Memory tool — persists user restaurant selections to MongoDB."""
+"""Memory tool — persists user restaurant selections to JSON file store."""
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from typing import Any
 
-from app.db.models import Selection
-from app.db.queries import save_selection as _db_save_selection
+# Import data_store by absolute path to completely avoid the app.agent package
+# and its __init__.py chain (runner → graph → nodes → registry → memory_tool).
+import importlib.util
+from pathlib import Path
+
+_data_store_path = (
+    Path(__file__).resolve().parents[1]      # app/
+    / "agent" / "sub_agents" / "data_store.py"
+)
+_spec = importlib.util.spec_from_file_location("data_store", _data_store_path)
+_data_store = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_data_store)
+
+find_selection = _data_store.find_selection
+insert_selection = _data_store.insert_selection
+update_selection = _data_store.update_selection
+upsert_user_preference = _data_store.upsert_user_preference
 from app.tools.base import BaseTool
 
 
 class MemoryTool(BaseTool):
-    """Save a restaurant selection for a user."""
+    """Save a restaurant selection for a user using JSON file store."""
 
     name = "save_user_selection"
     description = (
         "Save a restaurant selection when the user chooses a place. "
-        "Stores the selection in the database and updates cuisine preferences."
+        "Stores the selection in the file store and updates cuisine preferences."
     )
 
     def _run(
@@ -27,34 +44,27 @@ class MemoryTool(BaseTool):
         rating: float = 0.0,
         **kwargs: Any,
     ) -> dict[str, Any]:
-        """Synchronous wrapper — runs the async save in an event loop."""
-        import asyncio
-        from datetime import datetime
+        """Synchronous wrapper — writes directly to JSON file store."""
+        now = datetime.utcnow().isoformat()
+        selection_data = {
+            "user_id": user_id,
+            "place_id": place_id,
+            "name": name,
+            "cuisine_type": cuisine_type,
+            "rating": float(rating),
+            "selected_at": now,
+        }
 
-        selection = Selection(
-            user_id=user_id,
-            place_id=place_id,
-            name=name,
-            cuisine_type=cuisine_type,
-            rating=float(rating),
-            selected_at=datetime.utcnow(),
-        )
-
-        # Run async DB call in the current event loop
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            # No running loop — create one
-            result = asyncio.run(_db_save_selection(selection, update_preference=True))
-            return {"success": result, "message": "Saved" if result else "Failed"}
-
-        # Schedule the coroutine in the running loop
-        future = asyncio.ensure_future(
-            _db_save_selection(selection, update_preference=True)
-        )
-        # Block until complete (only safe in a thread context)
-        result = asyncio.run_coroutine_threadsafe(future, loop).result(timeout=10)
-        return {"success": result, "message": "Saved" if result else "Failed"}
+        existing = find_selection(user_id, place_id)
+        if existing:
+            update_selection(user_id, place_id, selection_data)
+            return {"success": True, "message": "Updated"}
+        else:
+            insert_selection(selection_data)
+            # Also update cuisine preference
+            if cuisine_type:
+                upsert_user_preference(user_id, {"favorite_cuisine": cuisine_type})
+            return {"success": True, "message": "Saved"}
 
 
 memory_tool = MemoryTool()

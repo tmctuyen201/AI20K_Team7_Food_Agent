@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from sqlalchemy import true
-
 from app.core.logging import get_logger
 
 logger = get_logger("foodie.tool_definitions")

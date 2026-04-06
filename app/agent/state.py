@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TypedDict, Optional
 
 from app.db.models import LatLng, Place, ScoredPlace
@@ -24,3 +25,14 @@ class AgentState(TypedDict):
     last_radius: int
     messages: list[str]
     is_complete: bool
+
+
+@dataclass
+class ToolCall:
+    """Represents a single tool invocation for logging."""
+
+    tool_name: str
+    arguments: dict
+    result: Optional[str] = None
+    error: Optional[str] = None
+    duration_ms: Optional[float] = None

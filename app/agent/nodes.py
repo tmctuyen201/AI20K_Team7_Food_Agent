@@ -12,36 +12,55 @@ from app.tools.registry import get_tool_registry
 def parse_intent(state: AgentState) -> AgentState:
     """Parse user message to extract intent and keyword.
 
-    Simple keyword-based extraction. In a full implementation this would
-    be delegated to an LLM call, but we keep it lightweight here.
+    Returns None intent when no food-related keyword is found (LLM gen will be skipped).
+    Detects "select" intent when user chooses a restaurant.
     """
-    user_message = state["user_message"]
+    user_message = state["user_message"].lower().strip()
     user_id = state["user_id"]
 
     # Vietnamese and international food keywords
-    keywords = [
+    food_keywords = [
         "phở", "bún", "cơm", "bánh", "trà", "cà phê",
         "hải sản", "nướng", "lẩu", "burger", "pizza",
         "sushi", "thịt", "gà", "bò", "mì", "cá",
         "cappuccino", "espresso", "trà sữa", "bubble tea",
+        "đồ ăn", "quán", "nhà hàng", "ăn", "uống",
     ]
 
+    # Selection / confirmation keywords
+    select_keywords = [
+        "chọn", "tôi chọn", "em chọn", "mình chọn",
+        "lấy quán", "đặt", "book", "reserve",
+    ]
+
+    # 1. Detect "select" intent first
+    if any(kw in user_message for kw in select_keywords):
+        state["intent"] = "select"
+        state["keyword"] = None
+        state["is_complete"] = True
+        state["messages"].append("parse_intent: intent=select (user chose a restaurant)")
+        return state
+
+    # 2. Detect food keyword
     found_keyword: str | None = None
-    for kw in keywords:
-        if kw.lower() in user_message.lower():
+    for kw in food_keywords:
+        if kw in user_message:
             found_keyword = kw
             break
 
-    # Detect if user is asking for a location-based search
-    location_words = ["gần", "near", "đâu", "ở đâu", "tìm", "kiếm", "xung quanh"]
-    needs_location = any(w in user_message.lower() for w in location_words)
-
-    state["intent"] = "find_restaurant"
-    state["keyword"] = found_keyword or "restaurant"
-
-    state["messages"].append(
-        f"parse_intent: intent=find_restaurant keyword={state['keyword']}"
-    )
+    if found_keyword:
+        state["intent"] = "find_restaurant"
+        state["keyword"] = found_keyword
+        state["messages"].append(
+            f"parse_intent: intent=find_restaurant keyword={found_keyword}"
+        )
+    else:
+        # No food keyword → still run through the pipeline (no search)
+        # but LLM will respond naturally as a friendly food agent
+        state["intent"] = None
+        state["keyword"] = None
+        state["is_complete"] = True
+        state["messages"].append("parse_intent: intent=None (not food-related)")
 
     return state
 
@@ -64,7 +83,18 @@ def get_location(state: AgentState) -> AgentState:
 
 
 def search_places(state: AgentState) -> AgentState:
-    """Search for restaurants using Google Places via the tool registry."""
+    """Search for restaurants using Google Places via the tool registry.
+
+    Skipped entirely when intent is None (off-topic message) or "select".
+    """
+    # Skip search for non-food messages or selection confirmations
+    if state.get("intent") not in ("find_restaurant",):
+        state["is_complete"] = True
+        state["places"] = []
+        state["scored_places"] = []
+        state["messages"].append("search_places: skipped (intent not find_restaurant)")
+        return state
+
     location = state["location"]
     keyword = state.get("keyword", "restaurant")
     radius = state.get("last_radius", 2000)

@@ -1,55 +1,71 @@
-import json
-from typing import List, Dict, Any, Type
-from langchain_core.tools import BaseTool
-from pydantic import BaseModel, Field
+"""Scoring tool — ranks restaurants by quality and distance."""
 
-class ScoringInput(BaseModel):
-    places: List[Dict[str, Any]] = Field(description="Danh sách các quán ăn từ kết quả tìm kiếm")
-    w_quality: float = Field(default=0.6, description="Trọng số chất lượng (0.1 - 0.9)")
-    w_distance: float = Field(default=0.4, description="Trọng số khoảng cách (0.1 - 0.9)")
+from __future__ import annotations
+
+from typing import Any
+
+from app.db.models import Place, ScoredPlace
+from app.tools.base import BaseTool
+
 
 class ScoringTool(BaseTool):
-    name: str = "calculate_scores"
-    description: str = (
-        "Dùng để tính điểm và xếp hạng quán ăn dựa trên Rating và Khoảng cách. "
-        "Công thức: Score = (Rating * w_quality) + (w_distance / Distance_km). "
-        "Hãy tăng w_distance nếu khách hàng đang đói hoặc vội."
-    )
-    args_schema: Type[BaseModel] = ScoringInput
-    return_direct: bool = True 
+    """Score and rank places using quality (rating) and proximity weights.
 
-    def _parse_km(self, val: Any) -> float:
-        """Parse an toàn khoảng cách về float km."""
+    Formula: score = (rating * w_quality) + (w_distance / max(dist_km, 0.1))
+    """
+
+    name = "calculate_scores"
+    description = (
+        "Tính điểm và xếp hạng quán ăn dựa trên rating và khoảng cách. "
+        "Trả về danh sách quán đã sắp xếp theo điểm giảm dần."
+    )
+
+    @staticmethod
+    def _parse_km(val: Any) -> float:
+        """Parse distance value (km or m) to float km."""
         try:
             s = str(val).lower().strip()
-            if 'km' in s: return float(s.replace('km', '').strip())
-            if 'm' in s: return float(s.replace('m', '').strip()) / 1000
+            if "km" in s:
+                return float(s.replace("km", "").strip())
+            if "m" in s:
+                return float(s.replace("m", "").strip()) / 1000
             return float(s)
-        except: 
-            return 1.0 # Giá trị an toàn tránh lỗi logic
+        except Exception:
+            return 1.0
 
-    def _run(self, places: List[Dict[str, Any]], w_quality: float = 0.6, w_distance: float = 0.4) -> str:
-        if not places: 
-            return "Không có dữ liệu để xếp hạng."
+    def _run(
+        self,
+        places: list[dict[str, Any] | Any],
+        w_quality: float = 0.6,
+        w_distance: float = 0.4,
+        **kwargs: Any,
+    ) -> list[dict[str, Any]]:
+        if not places:
+            return []
 
-        scored = []
-        for p in places:
-            # Lấy rating và distance an toàn (mặc định 0 và 1.0 nếu thiếu)
-            rating = float(p.get("rating") or 0)
-            dist = self._parse_km(p.get("distance") or 1.0)
-            
-            # Tính toán: chặn dist tối thiểu 0.1km để tránh chia cho 0 và điểm ảo
-            total_score = (rating * w_quality) + (w_distance / max(dist, 0.1))
-            
-            # Giữ nguyên thông tin cũ và thêm điểm số mới
-            scored.append({**p, "total_score": round(total_score, 2)})
+        scored: list[ScoredPlace] = []
+        for place_data in places:
+            if isinstance(place_data, dict):
+                # Normalise: handle "distance" string or "distance_km" float
+                raw_dist = place_data.get("distance") or place_data.get("distance_km") or 1.0
+                dist_km = self._parse_km(raw_dist)
+                dist_km = max(dist_km, 0.1)
+                dist_score = w_distance / dist_km
+                rating = float(place_data.get("rating") or 0.0)
+                score = (rating * w_quality) + dist_score
 
-        # Sắp xếp giảm dần theo điểm và lấy Top 5
-        top_5 = sorted(scored, key=lambda x: x["total_score"], reverse=True)[:5]
+                place_dict = {
+                    **{k: v for k, v in place_data.items() if k not in ("distance", "total_score")},
+                    "distance_km": round(dist_km, 2),
+                    "score": round(score, 4),
+                }
+                scored.append(ScoredPlace(**place_dict))
+            else:
+                place = Place(name=str(place_data))
 
-        # Trả về kết quả dưới dạng chuỗi văn bản sạch để Agent in ra cho User
-        output = [f"=== BẢNG XẾP HẠNG (Chất lượng: {w_quality} / Gần: {w_distance}) ==="]
-        for i, r in enumerate(top_5, 1):
-            output.append(f"{i}. {r['name']} - Điểm tổng hợp: {r['total_score']}")
-        
-        return "\n".join(output)
+        # Sort descending by score
+        scored.sort(key=lambda p: p.score, reverse=True)
+        return [s.model_dump() for s in scored]
+
+
+scoring_tool = ScoringTool()

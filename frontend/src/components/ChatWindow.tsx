@@ -1,15 +1,15 @@
 import { useState, useRef, useEffect } from 'react';
-import type { AgentTurn, ScoredPlace } from '../types';
+import type { AgentTurn, ScoredPlace, ParsedPlace } from '../types';
 import PlaceCard from './PlaceCard';
-import Toast from './Toast';
 
 interface Props {
   turns: AgentTurn[];
   isLoading: boolean;
   onSelectPlace: (place: ScoredPlace) => void;
+  onSelectParsedPlace: (parsed: ParsedPlace) => void;
 }
 
-export default function ChatWindow({ turns, isLoading, onSelectPlace }: Props) {
+export default function ChatWindow({ turns, isLoading, onSelectPlace, onSelectParsedPlace }: Props) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom
@@ -19,6 +19,17 @@ export default function ChatWindow({ turns, isLoading, onSelectPlace }: Props) {
 
   const formatTime = (ts: number) =>
     new Date(ts).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+
+  /** Render assistant text with **bold** preserved as <strong> */
+  const renderMessage = (text: string) => {
+    const parts = text.split(/(\*\*[^*]+\*\*)/g);
+    return parts.map((part, i) => {
+      if (part.startsWith('**') && part.endsWith('**')) {
+        return <strong key={i}>{part.slice(2, -2)}</strong>;
+      }
+      return part;
+    });
+  };
 
   return (
     <div className="chat" role="log" aria-live="polite">
@@ -39,7 +50,7 @@ export default function ChatWindow({ turns, isLoading, onSelectPlace }: Props) {
             {/* Assistant message */}
             {turn.role === 'assistant' && (
               <>
-                {turn.message && <span>{turn.message}</span>}
+                {turn.message && <span>{renderMessage(turn.message)}</span>}
 
                 {/* Tool call debug log */}
                 {turn.toolCalls && turn.toolCalls.length > 0 && (
@@ -59,7 +70,7 @@ export default function ChatWindow({ turns, isLoading, onSelectPlace }: Props) {
                   </div>
                 )}
 
-                {/* Rendered places */}
+                {/* Rendered places from WebSocket "done" payload */}
                 {turn.places && turn.places.length > 0 && (
                   <div className="places-list">
                     {turn.places.map((place, idx) => (

@@ -1,122 +1,103 @@
-"""History endpoints for selection tracking and user preferences."""
+"""History endpoints — uses JSON file store (Phase 1, no MongoDB)."""
 
 from __future__ import annotations
 
-from typing import Optional
+from datetime import datetime
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Query, status
 from pydantic import BaseModel, Field
 
-from app.core.auth import verify_token
-from app.db.models import Selection
-from app.db.queries import (
-    get_selection_count,
-    get_top_cuisines,
-    get_user_selections,
-    save_selection,
-)
 from app.core.logging import get_logger
+from app.db.connection import users_store, selections_store
 
 router = APIRouter()
 logger = get_logger("foodie.api.history")
 
 
-# ── Request / response models ───────────────────────────────────────────────────
-
-
 class SelectionRequest(BaseModel):
-    """Payload for saving a restaurant selection."""
-
     user_id: str = Field(..., min_length=1)
     place_id: str = Field(..., min_length=1)
     name: str = Field(..., min_length=1)
-    cuisine_type: Optional[str] = None
+    cuisine_type: str | None = None
     rating: float = Field(default=0.0, ge=0.0, le=5.0)
 
 
-class HistoryResponse(BaseModel):
-    """Response for the history endpoint."""
-
-    selections: list[dict]
-    total: int
-    top_cuisines: list[dict]
-
-
 class SelectionResponse(BaseModel):
-    """Response for the selection save endpoint."""
-
     success: bool
     message: str
 
 
-# ── Routes ──────────────────────────────────────────────────────────────────────
-
-
-@router.get(
-    "/api/history/{user_id}",
-    response_model=HistoryResponse,
-    summary="Get user's selection history",
-    description="Returns the user's restaurant selection history, total count, and top cuisines.",
-)
+@router.get("/api/history/{user_id}")
 async def get_history(
     user_id: str,
-    limit: int = Field(default=20, ge=1, le=100),
-    skip: int = Field(default=0, ge=0),
-) -> HistoryResponse:
-    """Fetch a user's restaurant selection history.
+    limit: int = Query(default=20, ge=1, le=100),
+) -> dict:
+    # Get all selections for user
+    selections = []
+    for key, data in selections_store.items():
+        if data.get("user_id") == user_id:
+            selections.append(data)
 
-    Args:
-        user_id: Target user identifier.
-        limit: Maximum number of records to return (default 20).
-        skip: Number of records to skip for pagination (default 0).
-    """
-    selections = await get_user_selections(user_id, limit=limit, skip=skip)
-    total = await get_selection_count(user_id)
-    top_cuisines = await get_top_cuisines(user_id, limit=5)
+    # Sort by selected_at descending
+    selections.sort(key=lambda x: x.get("selected_at", ""), reverse=True)
 
-    logger.info(
-        "history_fetched",
-        user_id=user_id,
-        returned=len(selections),
-        total=total,
-    )
+    # Apply limit
+    selections = selections[:limit]
+    total = sum(1 for k, v in selections_store.items() if v.get("user_id") == user_id)
 
-    return HistoryResponse(
-        selections=[s.model_dump(mode="json") for s in selections],
-        total=total,
-        top_cuisines=top_cuisines,
-    )
+    # Count top cuisines
+    cuisine_count: dict[str, int] = {}
+    for sel in selections:
+        cuisine = sel.get("cuisine_type") or "unknown"
+        cuisine_count[cuisine] = cuisine_count.get(cuisine, 0) + 1
+
+    top_cuisines = [
+        {"cuisine": c, "count": cnt, "avg_rating": 0.0}
+        for c, cnt in sorted(cuisine_count.items(), key=lambda x: -x[1])[:5]
+    ]
+
+    logger.info("history_fetched", user_id=user_id, returned=len(selections), total=total)
+
+    return {
+        "selections": selections,
+        "total": total,
+        "top_cuisines": top_cuisines,
+    }
 
 
-@router.post(
-    "/api/selection",
-    response_model=SelectionResponse,
-    status_code=status.HTTP_201_CREATED,
-    summary="Save a restaurant selection",
-    description="Records a user's restaurant choice and updates their cuisine preference.",
-)
-async def create_selection(request: SelectionRequest) -> SelectionResponse:
-    """Save (or update) a restaurant selection for a user.
+@router.post("/api/selection", response_model=SelectionResponse, status_code=status.HTTP_201_CREATED)
+async def save_selection(request: SelectionRequest) -> SelectionResponse:
+    now = datetime.utcnow().isoformat()
+    selection_key = f"{request.user_id}:{request.place_id}"
 
-    Args:
-        request: Selection details including place_id, name, cuisine_type, and rating.
-    """
-    selection = Selection(
-        user_id=request.user_id,
-        place_id=request.place_id,
-        name=request.name,
-        cuisine_type=request.cuisine_type,
-        rating=request.rating,
-    )
+    selection_data = {
+        "user_id": request.user_id,
+        "place_id": request.place_id,
+        "name": request.name,
+        "cuisine_type": request.cuisine_type,
+        "rating": request.rating,
+        "selected_at": now,
+    }
 
-    success = await save_selection(selection, update_preference=True)
-
-    message = "Selection saved" if success else "Failed to save"
-    status_code = status.HTTP_201_CREATED if success else status.HTTP_500_INTERNAL_SERVER_ERROR
-
-    if not success:
-        logger.error("selection_save_failed", user_id=request.user_id, place_id=request.place_id)
+    existing = selections_store.get(selection_key)
+    if existing:
+        # Update existing
+        selections_store.set(selection_key, {**existing, **selection_data})
+        logger.info("selection_updated", user_id=request.user_id, place_id=request.place_id)
     else:
+        # Insert new
+        selections_store.set(selection_key, selection_data)
         logger.info("selection_saved", user_id=request.user_id, place_id=request.place_id)
 
-    return SelectionResponse(success=success, message=message)
+    # Update user's favorite cuisines
+    if request.cuisine_type:
+        user_data = users_store.get(request.user_id) or {}
+        prefs = user_data.get("preference", {})
+        fav_cuisines = prefs.get("favorite_cuisines", [])
+        if request.cuisine_type not in fav_cuisines:
+            fav_cuisines.append(request.cuisine_type)
+        prefs["favorite_cuisines"] = fav_cuisines
+        user_data["preference"] = prefs
+        users_store.set(request.user_id, user_data)
+
+    return SelectionResponse(success=True, message="Selection saved")

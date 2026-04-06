@@ -57,3 +57,13 @@ class GeocodingClient:
 
 
 geocoding_client = GeocodingClient()
+
+
+def geocode_address(address: str) -> dict[str, Any]:
+    """Synchronous wrapper for backward compatibility.
+
+    Runs the async geocode method in a new event loop.
+    Prefer the async GeocodingClient.geocode() in async contexts.
+    """
+    import asyncio
+    return asyncio.run(geocoding_client.geocode(address))

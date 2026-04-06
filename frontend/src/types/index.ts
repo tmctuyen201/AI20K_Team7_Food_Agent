@@ -75,6 +75,16 @@ export interface WsErrorMessage {
 
 export type WsMessage = WsTokenMessage | WsDoneMessage | WsErrorMessage;
 
+// ── Parsed place from assistant text ──────────────────────────────────────────
+
+export interface ParsedPlace {
+  name: string;
+  rating: number;
+  distance_km: number;
+  description: string;
+  address?: string;
+}
+
 // ── Agent UI state ──────────────────────────────────────────────────────────
 
 export interface ToolCallEntry {
@@ -87,7 +97,8 @@ export interface ToolCallEntry {
 export interface AgentTurn {
   role: 'user' | 'assistant';
   message: string;
-  places?: ScoredPlace[];
+  places?: ScoredPlace[];       // from WebSocket "done" payload
+  parsedPlaces?: ParsedPlace[]; // extracted from assistant text
   toolCalls?: ToolCallEntry[];
   timestamp: number;
 }

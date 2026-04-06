@@ -1,4 +1,5 @@
 import { useState, useRef, KeyboardEvent } from 'react';
+import type { ParsedPlace } from './types';
 import { useChat } from './hooks/useChat';
 import ChatWindow from './components/ChatWindow';
 import Toast from './components/Toast';
@@ -6,6 +7,19 @@ import Toast from './components/Toast';
 interface ToastState {
   message: string;
   type: 'success' | 'error';
+}
+
+/** Convert ParsedPlace (from LLM text) → ScoredPlace shape for storage */
+function parsedToScored(parsed: ParsedPlace) {
+  return {
+    place_id: `parsed_${parsed.name.replace(/\s+/g, '_')}`,
+    name: parsed.name,
+    rating: parsed.rating,
+    distance_km: parsed.distance_km,
+    score: parsed.rating,
+    cuisine_type: undefined,
+    address: parsed.address,
+  };
 }
 
 export default function App() {
@@ -38,6 +52,10 @@ export default function App() {
     } catch (err) {
       setToast({ message: 'Lỗi gửi tin nhắn', type: 'error' });
     }
+  };
+
+  const handleSelectParsedPlace = async (parsed: ParsedPlace) => {
+    await selectPlace(parsedToScored(parsed));
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -111,6 +129,7 @@ export default function App() {
         turns={turns}
         isLoading={status === 'connecting'}
         onSelectPlace={selectPlace}
+        onSelectParsedPlace={handleSelectParsedPlace}
       />
 
       {/* Input */}

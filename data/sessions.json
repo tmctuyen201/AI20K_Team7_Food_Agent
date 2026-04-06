@@ -1,0 +1,583 @@
+{
+  "sess_1732c5097f3c": {
+    "session_id": "sess_1732c5097f3c",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T09:27:24.760805+00:00"
+  },
+  "sess_c5a3f400f642": {
+    "session_id": "sess_c5a3f400f642",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T09:31:05.574862+00:00"
+  },
+  "sess_f5f7147ad1ec": {
+    "session_id": "sess_f5f7147ad1ec",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T09:31:08.654499+00:00"
+  },
+  "sess_d1e6af53166d": {
+    "session_id": "sess_d1e6af53166d",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T09:33:45.657150+00:00"
+  },
+  "sess_f2724ccfb974": {
+    "session_id": "sess_f2724ccfb974",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T09:36:23.133665+00:00"
+  },
+  "sess_66939503cb51": {
+    "session_id": "sess_66939503cb51",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T09:40:13.927551+00:00"
+  },
+  "sess_4e891e813f7a": {
+    "session_id": "sess_4e891e813f7a",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T09:41:56.897872+00:00"
+  },
+  "sess_258c01574de3": {
+    "session_id": "sess_258c01574de3",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T09:45:47.642955+00:00"
+  },
+  "sess_9f12c1f75255": {
+    "session_id": "sess_9f12c1f75255",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T09:57:11.244472+00:00"
+  },
+  "sess_61060ca11db7": {
+    "session_id": "sess_61060ca11db7",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T10:03:08.707089+00:00"
+  },
+  "sess_cab9aab88593": {
+    "session_id": "sess_cab9aab88593",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T10:03:08.750052+00:00"
+  },
+  "sess_b4a1cd9076fd": {
+    "session_id": "sess_b4a1cd9076fd",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T10:07:40.285089+00:00"
+  },
+  "sess_b1044d5a1ede": {
+    "session_id": "sess_b1044d5a1ede",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T10:07:40.320942+00:00"
+  },
+  "sess_a3d6a588e161": {
+    "session_id": "sess_a3d6a588e161",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T10:07:46.827002+00:00"
+  },
+  "sess_ae78ca57e155": {
+    "session_id": "sess_ae78ca57e155",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T10:07:46.877558+00:00"
+  },
+  "sess_90d2032427f0": {
+    "session_id": "sess_90d2032427f0",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T10:14:08.029518+00:00"
+  },
+  "sess_a2de40b7ac71": {
+    "session_id": "sess_a2de40b7ac71",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T10:14:08.075199+00:00"
+  },
+  "sess_b297806b97b3": {
+    "session_id": "sess_b297806b97b3",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T10:14:08.102862+00:00"
+  },
+  "sess_d1beef1cf171": {
+    "session_id": "sess_d1beef1cf171",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T10:14:55.604981+00:00"
+  },
+  "sess_15de35c417d6": {
+    "session_id": "sess_15de35c417d6",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T10:14:55.656357+00:00"
+  },
+  "sess_07fead5fbbeb": {
+    "session_id": "sess_07fead5fbbeb",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T10:15:06.800899+00:00"
+  },
+  "sess_13cccddc102a": {
+    "session_id": "sess_13cccddc102a",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T10:15:09.141298+00:00"
+  },
+  "sess_f7ad17ff4cac": {
+    "session_id": "sess_f7ad17ff4cac",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T10:15:09.186286+00:00"
+  },
+  "sess_a1c9fc5b7b33": {
+    "session_id": "sess_a1c9fc5b7b33",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T10:17:38.039443+00:00"
+  },
+  "sess_d83ac4d435ba": {
+    "session_id": "sess_d83ac4d435ba",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T10:17:38.068582+00:00"
+  },
+  "sess_ef201868de25": {
+    "session_id": "sess_ef201868de25",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T10:18:00.677726+00:00"
+  },
+  "sess_5783addbd2c2": {
+    "session_id": "sess_5783addbd2c2",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T10:18:00.786538+00:00"
+  },
+  "sess_3130a1678bd4": {
+    "session_id": "sess_3130a1678bd4",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T10:18:21.703676+00:00"
+  },
+  "sess_3d71587694d9": {
+    "session_id": "sess_3d71587694d9",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T10:18:21.860816+00:00"
+  },
+  "sess_d4f9f4a74333": {
+    "session_id": "sess_d4f9f4a74333",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T10:22:09.430807+00:00"
+  },
+  "sess_5de446f76925": {
+    "session_id": "sess_5de446f76925",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T10:22:09.475536+00:00"
+  },
+  "sess_f3443085d5a6": {
+    "session_id": "sess_f3443085d5a6",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T10:22:47.307497+00:00"
+  },
+  "sess_86810d7f21ec": {
+    "session_id": "sess_86810d7f21ec",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T10:22:47.348488+00:00"
+  },
+  "sess_e373168ae7fd": {
+    "session_id": "sess_e373168ae7fd",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T10:22:50.445848+00:00"
+  },
+  "sess_e29c628fde3a": {
+    "session_id": "sess_e29c628fde3a",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T10:22:50.487469+00:00"
+  },
+  "sess_e37a4f8ba0c5": {
+    "session_id": "sess_e37a4f8ba0c5",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T10:23:49.266891+00:00"
+  },
+  "sess_a079ca171907": {
+    "session_id": "sess_a079ca171907",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T10:23:49.319523+00:00"
+  },
+  "sess_3b378004c4db": {
+    "session_id": "sess_3b378004c4db",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T10:24:21.205094+00:00"
+  },
+  "sess_fab959447fa6": {
+    "session_id": "sess_fab959447fa6",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T10:24:21.243965+00:00"
+  },
+  "sess_87da95595714": {
+    "session_id": "sess_87da95595714",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T10:25:46.018132+00:00"
+  },
+  "sess_0a93f8996892": {
+    "session_id": "sess_0a93f8996892",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T10:25:46.044247+00:00"
+  },
+  "sess_888b73f7fa35": {
+    "session_id": "sess_888b73f7fa35",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T10:25:56.709694+00:00"
+  },
+  "sess_f18e7468e635": {
+    "session_id": "sess_f18e7468e635",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T10:25:56.744862+00:00"
+  },
+  "sess_bab54e365a8f": {
+    "session_id": "sess_bab54e365a8f",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T10:26:49.650752+00:00"
+  },
+  "sess_1947a6da9b42": {
+    "session_id": "sess_1947a6da9b42",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T10:26:49.701210+00:00"
+  },
+  "sess_f5012b72cdc9": {
+    "session_id": "sess_f5012b72cdc9",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T10:35:33.026845+00:00"
+  },
+  "sess_2da3d950a204": {
+    "session_id": "sess_2da3d950a204",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T10:35:33.060046+00:00"
+  },
+  "sess_aa17a199dbd8": {
+    "session_id": "sess_aa17a199dbd8",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T10:36:20.723753+00:00"
+  },
+  "sess_55cc875ae06c": {
+    "session_id": "sess_55cc875ae06c",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T10:36:20.750754+00:00"
+  },
+  "sess_10ceff135ef9": {
+    "session_id": "sess_10ceff135ef9",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T10:36:32.040671+00:00"
+  },
+  "sess_2ec767ae11d9": {
+    "session_id": "sess_2ec767ae11d9",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T10:36:32.077350+00:00"
+  },
+  "sess_ca22d04843f5": {
+    "session_id": "sess_ca22d04843f5",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T10:36:52.708724+00:00"
+  },
+  "sess_05160f034eb2": {
+    "session_id": "sess_05160f034eb2",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T10:36:52.735760+00:00"
+  },
+  "sess_70e30e933176": {
+    "session_id": "sess_70e30e933176",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T10:37:48.483117+00:00"
+  },
+  "sess_18094c32b0f2": {
+    "session_id": "sess_18094c32b0f2",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T10:37:48.525965+00:00"
+  },
+  "sess_669b51fe9ea4": {
+    "session_id": "sess_669b51fe9ea4",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T10:38:47.137349+00:00"
+  },
+  "sess_ccdd54713796": {
+    "session_id": "sess_ccdd54713796",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T10:38:47.233709+00:00"
+  },
+  "sess_0d5e1d492810": {
+    "session_id": "sess_0d5e1d492810",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T10:40:09.021278+00:00"
+  },
+  "sess_7d7f0715da0d": {
+    "session_id": "sess_7d7f0715da0d",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T10:40:09.047878+00:00"
+  },
+  "sess_b6594a6e0981": {
+    "session_id": "sess_b6594a6e0981",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T10:41:38.312719+00:00"
+  },
+  "sess_d0836a7f0a38": {
+    "session_id": "sess_d0836a7f0a38",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T10:41:38.350941+00:00"
+  },
+  "sess_0b81094dd45a": {
+    "session_id": "sess_0b81094dd45a",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T10:43:22.021107+00:00"
+  },
+  "sess_bdece11cd077": {
+    "session_id": "sess_bdece11cd077",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T10:43:22.042389+00:00"
+  },
+  "sess_5187f839fb84": {
+    "session_id": "sess_5187f839fb84",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T10:44:05.058748+00:00"
+  },
+  "sess_f84e77b8a83a": {
+    "session_id": "sess_f84e77b8a83a",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T10:44:05.163473+00:00"
+  },
+  "sess_d649dfb36dad": {
+    "session_id": "sess_d649dfb36dad",
+    "user_id": "u05",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T10:45:52.091372+00:00"
+  },
+  "sess_bc8e3dd2722f": {
+    "session_id": "sess_bc8e3dd2722f",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T10:46:57.917248+00:00"
+  },
+  "sess_1f69d8191645": {
+    "session_id": "sess_1f69d8191645",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T10:46:57.966312+00:00"
+  },
+  "sess_d38437e349a8": {
+    "session_id": "sess_d38437e349a8",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T10:50:31.346243+00:00"
+  },
+  "sess_9908594ed540": {
+    "session_id": "sess_9908594ed540",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T10:50:31.362771+00:00"
+  },
+  "sess_257a05c6ba32": {
+    "session_id": "sess_257a05c6ba32",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T11:01:10.817047+00:00"
+  },
+  "sess_3508f79184f4": {
+    "session_id": "sess_3508f79184f4",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T11:01:10.881399+00:00"
+  },
+  "sess_6bcddd1eafe1": {
+    "session_id": "sess_6bcddd1eafe1",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T11:07:43.026641+00:00"
+  },
+  "sess_c184094f3c9d": {
+    "session_id": "sess_c184094f3c9d",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T11:07:43.057980+00:00"
+  },
+  "sess_37cdda95687a": {
+    "session_id": "sess_37cdda95687a",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T11:10:04.022866+00:00"
+  },
+  "sess_871aef7216fb": {
+    "session_id": "sess_871aef7216fb",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T11:10:04.045534+00:00"
+  },
+  "sess_a3b1a056cdaf": {
+    "session_id": "sess_a3b1a056cdaf",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T11:10:30.743306+00:00"
+  },
+  "sess_74c1dfc02496": {
+    "session_id": "sess_74c1dfc02496",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T11:10:30.764058+00:00"
+  },
+  "sess_c95498feba7a": {
+    "session_id": "sess_c95498feba7a",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T12:17:43.480109+00:00"
+  },
+  "sess_78015f88fa62": {
+    "session_id": "sess_78015f88fa62",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T12:17:43.521594+00:00"
+  },
+  "sess_6d6246c5351e": {
+    "session_id": "sess_6d6246c5351e",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T12:25:37.430261+00:00"
+  },
+  "sess_4c263826d7fa": {
+    "session_id": "sess_4c263826d7fa",
+    "user_id": "u01",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T12:25:37.455560+00:00"
+  },
+  "sess_899100cf1ab4": {
+    "session_id": "sess_899100cf1ab4",
+    "user_id": "u04",
+    "latitude": 21.0285,
+    "longitude": 105.8542,
+    "created_at": "2026-04-06T12:25:45.555420+00:00"
+  }
+}
