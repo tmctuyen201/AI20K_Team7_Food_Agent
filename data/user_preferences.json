@@ -1,0 +1,82 @@
+{
+  "u01": {
+    "user_id": "u01",
+    "name": "Minh",
+    "favorite_cuisines": [],
+    "avoid_cuisines": [],
+    "price_range": "mid",
+    "preferred_ambiance": null
+  },
+  "u02": {
+    "user_id": "u02",
+    "name": "Linh",
+    "favorite_cuisines": [],
+    "avoid_cuisines": [],
+    "price_range": "mid",
+    "preferred_ambiance": null
+  },
+  "u03": {
+    "user_id": "u03",
+    "name": "Hùng",
+    "favorite_cuisines": [],
+    "avoid_cuisines": [],
+    "price_range": "mid",
+    "preferred_ambiance": null
+  },
+  "u04": {
+    "user_id": "u04",
+    "name": "Lan",
+    "favorite_cuisines": [],
+    "avoid_cuisines": [],
+    "price_range": "mid",
+    "preferred_ambiance": null
+  },
+  "u05": {
+    "user_id": "u05",
+    "name": "Nam",
+    "favorite_cuisines": [],
+    "avoid_cuisines": [],
+    "price_range": "mid",
+    "preferred_ambiance": null
+  },
+  "u06": {
+    "user_id": "u06",
+    "name": "Mai",
+    "favorite_cuisines": [],
+    "avoid_cuisines": [],
+    "price_range": "mid",
+    "preferred_ambiance": null
+  },
+  "u07": {
+    "user_id": "u07",
+    "name": "Tuấn",
+    "favorite_cuisines": [],
+    "avoid_cuisines": [],
+    "price_range": "mid",
+    "preferred_ambiance": null
+  },
+  "u08": {
+    "user_id": "u08",
+    "name": "Hoa",
+    "favorite_cuisines": [],
+    "avoid_cuisines": [],
+    "price_range": "mid",
+    "preferred_ambiance": null
+  },
+  "u09": {
+    "user_id": "u09",
+    "name": "Bình",
+    "favorite_cuisines": [],
+    "avoid_cuisines": [],
+    "price_range": "mid",
+    "preferred_ambiance": null
+  },
+  "u10": {
+    "user_id": "u10",
+    "name": "Dung",
+    "favorite_cuisines": [],
+    "avoid_cuisines": [],
+    "price_range": "mid",
+    "preferred_ambiance": null
+  }
+}
