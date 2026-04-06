@@ -1,14 +1,30 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import type { AgentTurn, ConnectionStatus, ScoredPlace } from '../types';
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
 const RECONNECT_DELAY = 3000;
 
+interface SessionInfo {
+  session_id: string;
+  user_id: string;
+  token: string;
+}
+
+interface WsMessage {
+  type: string;
+  text?: string;
+  user_id?: string;
+  data?: unknown;
+  places?: ScoredPlace[];
+  message?: string;
+  detail?: string;
+}
+
 const MOCK_USERS = [
   { user_id: 'u01', name: 'Minh', city: 'Hà Nội - Hoàn Kiếm' },
   { user_id: 'u02', name: 'Linh', city: 'TP.HCM - Quận 1' },
   { user_id: 'u03', name: 'Hùng', city: 'Đà Nẵng - Hải Châu' },
-  { user_id: 'u04', name: 'Lan',  city: 'Cần Thơ - Ninh Kiều' },
+  { user_id: 'u04', name: 'Lan',  name: 'Lan',  city: 'Cần Thơ - Ninh Kiều' },
   { user_id: 'u05', name: 'Nam',  city: 'Hải Phòng - Lê Chân' },
   { user_id: 'u06', name: 'Mai',  city: 'TP.HCM - Thủ Đức' },
   { user_id: 'u07', name: 'Tuấn', city: 'Vĩnh Phúc - Vĩnh Yên' },
@@ -16,6 +32,9 @@ const MOCK_USERS = [
   { user_id: 'u09', name: 'Bình', city: 'Quy Nhơn - Nhơn Bình' },
   { user_id: 'u10', name: 'Dung', city: 'Đà Lạt - Phường 1' },
 ];
+
+// Fix u04 duplicate name
+MOCK_USERS[3].name = 'Lan';
 
 interface UseChatReturn {
   status: ConnectionStatus;
@@ -27,6 +46,7 @@ interface UseChatReturn {
   selectPlace: (place: ScoredPlace) => void;
   reset: () => void;
   users: typeof MOCK_USERS;
+  sessionInfo: SessionInfo | null;
 }
 
 export function useChat(): UseChatReturn {
@@ -34,86 +54,99 @@ export function useChat(): UseChatReturn {
   const [turns, setTurns] = useState<AgentTurn[]>([]);
   const [lastPlaces, setLastPlaces] = useState<ScoredPlace[]>([]);
   const [selectedUserId, setSelectedUserId] = useState('u01');
+  const [sessionInfo, setSessionInfo] = useState<SessionInfo | null>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pendingResolve = useRef<((data: Record<string, unknown>) => void) | null>(null);
-  const pendingReject = useRef<((err: Error) => void) | null>(null);
+  const userIdRef = useRef(selectedUserId);
+  const sessionIdRef = useRef('');
 
-  const connect = useCallback(() => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) return;
+  // Keep refs in sync with state
+  useEffect(() => { userIdRef.current = selectedUserId; }, [selectedUserId]);
+
+  // ── Step 1: Create session → get JWT ──────────────────────────────────────
+
+  const createSession = useCallback(async (user_id: string): Promise<SessionInfo> => {
+    const res = await fetch(`${BACKEND_URL}/api/session`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id, name: '', latitude: 21.0285, longitude: 105.8542 }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Unknown error' }));
+      throw new Error(err.detail || `HTTP ${res.status}`);
+    }
+
+    const data = await res.json();
+    return {
+      session_id: data.session_id,
+      user_id: data.user_id,
+      token: data.token,
+    };
+  }, []);
+
+  // ── Step 2: Connect WebSocket with token ────────────────────────────────────
+
+  const connectWs = useCallback(async (token: string) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      return;
+    }
 
     setStatus('connecting');
-    const ws = new WebSocket(`ws://${BACKEND_URL}/ws/chat`);
+
+    const ws = new WebSocket(`${BACKEND_URL}/ws/chat?token=${encodeURIComponent(token)}`);
     wsRef.current = ws;
 
     ws.onopen = () => {
       setStatus('connected');
-      // Authenticate with user_id
-      ws.send(JSON.stringify({ type: 'auth', user_id: selectedUserId }));
     };
 
     ws.onmessage = (event) => {
+      let msg: WsMessage;
       try {
-        const data = JSON.parse(event.data as string) as Record<string, unknown>;
-
-        if (data.type === 'token' || data.type === 'chunk') {
-          // Streaming token — accumulate in last assistant turn
-          setTurns((prev) => {
-            const last = prev[prev.length - 1];
-            if (last?.role === 'assistant') {
-              return [
-                ...prev.slice(0, -1),
-                { ...last, message: last.message + (data.data as string) },
-              ];
-            }
-            return prev;
-          });
-        } else if (data.type === 'done') {
-          // Final response
-          const places = (data.data as { places?: ScoredPlace[] })?.places ?? [];
-          setLastPlaces(places);
-
-          setTurns((prev) => {
-            const last = prev[prev.length - 1];
-            if (last?.role === 'assistant') {
-              return [
-                ...prev.slice(0, -1),
-                {
-                  ...last,
-                  places,
-                  timestamp: Date.now(),
-                },
-              ];
-            }
-            return prev;
-          });
-
-          pendingResolve.current?.(data as Record<string, unknown>);
-          pendingResolve.current = null;
-          pendingReject.current = null;
-        } else if (data.type === 'tool_result') {
-          // Tool call result from backend
-          setTurns((prev) => {
-            const last = prev[prev.length - 1];
-            if (last?.role === 'assistant') {
-              const toolCalls = [
-                ...(last.toolCalls ?? []),
-                data as { tool: string; args: Record<string, unknown>; result?: string; error?: string },
-              ];
-              return [{ ...last, toolCalls }];
-            }
-            return prev;
-          });
-        } else if (data.type === 'error') {
-          const err = new Error((data.detail as string) || 'Unknown error');
-          pendingReject.current?.(err);
-          pendingReject.current = null;
-          pendingResolve.current = null;
-          setStatus('error');
-        }
+        msg = JSON.parse(event.data as string) as WsMessage;
       } catch {
-        // ignore parse errors
+        return;
+      }
+
+      if (msg.type === 'token') {
+        // Streaming token — accumulate in last assistant turn
+        setTurns((prev) => {
+          const last = prev[prev.length - 1];
+          if (last?.role === 'assistant') {
+            return [
+              ...prev.slice(0, -1),
+              { ...last, message: last.message + (msg.data as string) },
+            ];
+          }
+          return prev;
+        });
+      } else if (msg.type === 'done') {
+        const places: ScoredPlace[] = ((msg as unknown as { data?: { places?: ScoredPlace[] } }).data?.places ?? []) as ScoredPlace[];
+        setLastPlaces(places);
+
+        setTurns((prev) => {
+          const last = prev[prev.length - 1];
+          if (last?.role === 'assistant') {
+            return [
+              ...prev.slice(0, -1),
+              { ...last, places, timestamp: Date.now() },
+            ];
+          }
+          return prev;
+        });
+      } else if (msg.type === 'error') {
+        const errMsg = (msg as WsMessage & { message?: string }).message || 'Unknown error';
+        setTurns((prev) => [
+          ...prev,
+          {
+            role: 'assistant',
+            message: `❌ Lỗi: ${errMsg}`,
+            timestamp: Date.now(),
+          },
+        ]);
+        setStatus('error');
       }
     };
 
@@ -124,84 +157,109 @@ export function useChat(): UseChatReturn {
     ws.onclose = () => {
       setStatus('disconnected');
       wsRef.current = null;
-      // Auto-reconnect
-      reconnectTimer.current = setTimeout(connect, RECONNECT_DELAY);
+      reconnectTimer.current = setTimeout(() => {
+        if (sessionInfo?.token) {
+          connectWs(sessionInfo.token);
+        }
+      }, RECONNECT_DELAY);
     };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [sessionInfo?.token]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const sendMessage = useCallback(
-    async (text: string) => {
-      const userTurn: AgentTurn = {
-        role: 'user',
-        message: text,
-        timestamp: Date.now(),
-      };
-      setTurns((prev) => [...prev, userTurn]);
+  // ── Step 3: Send message ────────────────────────────────────────────────────
 
-      // Start assistant turn
-      setTurns((prev) => [
-        ...prev,
-        {
-          role: 'assistant',
-          message: '',
-          toolCalls: [],
-          timestamp: Date.now(),
-        },
-      ]);
+  const sendMessage = useCallback(async (text: string) => {
+    // Append user turn immediately
+    const userTurn: AgentTurn = {
+      role: 'user',
+      message: text,
+      timestamp: Date.now(),
+    };
+    setTurns((prev) => [...prev, userTurn]);
 
-      const ws = wsRef.current;
-      if (!ws || ws.readyState !== WebSocket.OPEN) {
-        connect();
-        // Wait for connection then send
-        await new Promise<void>((resolve) => {
-          const check = setInterval(() => {
-            if (wsRef.current?.readyState === WebSocket.OPEN) {
-              clearInterval(check);
-              resolve();
-            }
-          }, 200);
-        });
-        wsRef.current.send(JSON.stringify({
-          type: 'message',
-          text,
-          user_id: selectedUserId,
-        }));
-      } else {
-        ws.send(JSON.stringify({
-          type: 'message',
-          text,
-          user_id: selectedUserId,
-        }));
+    // Start assistant turn
+    setTurns((prev) => [
+      ...prev,
+      { role: 'assistant', message: '', timestamp: Date.now() },
+    ]);
+
+    // Ensure WebSocket is connected
+    let currentSession = sessionInfo;
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+      try {
+        currentSession = await createSession(userIdRef.current);
+        sessionIdRef.current = currentSession.session_id;
+        setSessionInfo(currentSession);
+        await connectWs(currentSession.token);
+      } catch (err) {
+        const errMsg = err instanceof Error ? err.message : 'Cannot connect';
+        setTurns((prev) => [
+          ...prev,
+          {
+            role: 'assistant',
+            message: `❌ Lỗi kết nối: ${errMsg}`,
+            timestamp: Date.now(),
+          },
+        ]);
+        return;
       }
-    },
-    [selectedUserId, connect],
-  );
+    }
 
-  const selectPlace = useCallback(
-    async (place: ScoredPlace) => {
-      const msg = `Tôi chọn quán số: ${place.name}`;
-      await sendMessage(msg);
-    },
-    [sendMessage],
-  );
+    // Send in the format backend expects
+    wsRef.current.send(JSON.stringify({ text }));
+  }, [sessionInfo, createSession, connectWs]);
 
-  const reset = useCallback(() => {
-    setTurns([]);
-    setLastPlaces([]);
+  // ── Switch user → new session ───────────────────────────────────────────────
+
+  const handleSetUserId = useCallback((newId: string) => {
+    setSelectedUserId(newId);
+    // Close existing WS, reconnect with new session
+    if (wsRef.current) {
+      wsRef.current.close();
+      wsRef.current = null;
+    }
+    setSessionInfo(null);
+    setStatus('disconnected');
   }, []);
 
-  // Cleanup on unmount
-  // (not using useEffect to avoid rule of hooks issues in custom hook)
+  // ── Select place ────────────────────────────────────────────────────────────
+
+  const selectPlace = useCallback(async (place: ScoredPlace) => {
+    const msg = `Tôi chọn quán số: ${place.name}`;
+    await sendMessage(msg);
+  }, [sendMessage]);
+
+  // ── Reset conversation ──────────────────────────────────────────────────────
+
+  const reset = useCallback(() => {
+    if (wsRef.current) {
+      wsRef.current.close();
+      wsRef.current = null;
+    }
+    setTurns([]);
+    setLastPlaces([]);
+    setSessionInfo(null);
+    setStatus('disconnected');
+  }, []);
+
+  // ── Cleanup on unmount ──────────────────────────────────────────────────────
+
+  useEffect(() => {
+    return () => {
+      if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
+      if (wsRef.current) wsRef.current.close();
+    };
+  }, []);
 
   return {
     status,
     turns,
     lastPlaces,
     selectedUserId,
-    setSelectedUserId,
+    setSelectedUserId: handleSetUserId,
     sendMessage,
     selectPlace,
     reset,
     users: MOCK_USERS,
+    sessionInfo,
   };
 }

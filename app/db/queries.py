@@ -1,177 +1,132 @@
-"""Database query layer (Phase 1 — JSON file store).
-
-All functions here are async wrappers around the synchronous JSON store.
-Replace the underlying store with MongoDB in Phase 2.
-"""
+"""Low-level MongoDB query helpers (Phase 2)."""
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import Optional
 
-from app.db.models import Selection, Session, User
-from app.db.connection import get_db_path
-from app.core.logging import get_logger
-
-logger = get_logger("foodie.db.queries")
-
-if TYPE_CHECKING:
-    from pathlib import Path
+from app.db.connection import get_db
+from app.db.models import Session, Selection, User, UserPreference
 
 
-# ── JSON helpers ────────────────────────────────────────────────────────────────
-
-import json
-
-
-def _read_store(filename: str) -> dict:
-    path = get_db_path(filename)
-    if not path.exists():
-        return {}
-    with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)
+# ---------------------------------------------------------------------------
+# User
+# ---------------------------------------------------------------------------
 
 
-def _write_store(filename: str, data: dict) -> None:
-    path = get_db_path(filename)
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2, default=str)
+async def get_user(user_id: str) -> Optional[User]:
+    """Retrieve a user by user_id, or None if not found."""
+    doc = await get_db().users.find_one({"user_id": user_id})
+    return User(**doc) if doc else None
 
 
-# ── User queries ────────────────────────────────────────────────────────────────
-
-async def get_user(user_id: str) -> User | None:
-    """Return a user by ID, or None if not found."""
-    store = _read_store("users.json")
-    raw = store.get(user_id)
-    if raw is None:
-        return None
-    return User(**raw)
-
-
-async def create_user(user: User) -> User:
-    """Insert a new user into the store."""
-    store = _read_store("users.json")
-    store[user.user_id] = user.model_dump()
-    _write_store("users.json", store)
-    logger.info("user_created", user_id=user.user_id)
-    return user
+async def create_user(user: User) -> bool:
+    """Insert a new user document. Returns True on success."""
+    try:
+        user_dict = user.model_dump()
+        # Remove None lat/lng from default_location to avoid validation errors
+        loc = user_dict.get("default_location")
+        if loc and loc.get("lat") == 0.0 and loc.get("lng") == 0.0:
+            user_dict["default_location"] = {"lat": loc["lat"], "lng": loc["lng"]}
+        await get_db().users.insert_one(user_dict)
+        return True
+    except Exception:
+        return False
 
 
-async def update_user(user_id: str, updates: dict) -> User | None:
-    """Update user fields, return updated User or None if not found."""
-    store = _read_store("users.json")
-    if user_id not in store:
-        return None
-    store[user_id].update(updates)
-    _write_store("users.json", store)
-    return User(**store[user_id])
+async def upsert_user(user_id: str, name: str = "", lat: float = 0.0, lng: float = 0.0, city: str = "") -> None:
+    """Insert or replace a user document."""
+    await get_db().users.update_one(
+        {"user_id": user_id},
+        {"$set": {"user_id": user_id, "name": name, "lat": lat, "lng": lng, "city": city}},
+        upsert=True,
+    )
 
 
-# ── Session queries ─────────────────────────────────────────────────────────────
-
-async def get_session(session_id: str) -> Session | None:
-    """Return a session by ID, or None if not found."""
-    store = _read_store("sessions.json")
-    raw = store.get(session_id)
-    if raw is None:
-        return None
-    return Session(**raw)
-
-
-async def create_session(session: Session) -> Session:
-    """Insert a new session."""
-    store = _read_store("sessions.json")
-    store[session.session_id] = session.model_dump()
-    _write_store("sessions.json", store)
-    logger.info("session_created", session_id=session.session_id, user_id=session.user_id)
-    return session
+async def get_user_preference(user_id: str) -> UserPreference:
+    """Return the user's preference sub-document."""
+    doc = await get_db().users.find_one(
+        {"user_id": user_id},
+        {"preference": 1},
+    )
+    if doc and "preference" in doc:
+        return UserPreference(**doc["preference"])
+    return UserPreference()
 
 
-async def update_session(session_id: str, updates: dict) -> Session | None:
-    """Update session fields."""
-    store = _read_store("sessions.json")
-    if session_id not in store:
-        return None
-    store[session_id].update(updates)
-    _write_store("sessions.json", store)
-    return Session(**store[session_id])
+# ---------------------------------------------------------------------------
+# Session
+# ---------------------------------------------------------------------------
 
 
-# ── Selection queries ───────────────────────────────────────────────────────────
-
-async def get_selection(user_id: str, place_id: str) -> Selection | None:
-    """Return a specific selection, or None."""
-    store = _read_store("selections.json")
-    for sel in store.get("selections", []):
-        if sel.get("user_id") == user_id and sel.get("place_id") == place_id:
-            return Selection(**sel)
-    return None
+async def get_session(session_id: str) -> Optional[Session]:
+    """Retrieve a session by session_id."""
+    doc = await get_db().sessions.find_one({"session_id": session_id})
+    return Session(**doc) if doc else None
 
 
-async def get_user_selections(user_id: str, limit: int = 20, skip: int = 0) -> list[Selection]:
-    """Return a user's selection history, newest first."""
-    store = _read_store("selections.json")
-    user_sels = [
-        Selection(**s)
-        for s in store.get("selections", [])
-        if s.get("user_id") == user_id
-    ]
-    user_sels.sort(key=lambda s: s.selected_at, reverse=True)
-    return user_sels[skip : skip + limit]
+async def create_session(session: Session) -> bool:
+    """Insert a new session document."""
+    try:
+        await get_db().sessions.insert_one(session.model_dump())
+        return True
+    except Exception:
+        return False
+
+
+# ---------------------------------------------------------------------------
+# Selection
+# ---------------------------------------------------------------------------
+
+
+async def save_selection(selection: Selection, update_preference: bool = True) -> bool:
+    """Insert a restaurant selection. Optionally update the user's cuisine preference."""
+    try:
+        await get_db().selections.insert_one(selection.model_dump())
+
+        if update_preference and selection.cuisine_type:
+            await get_db().users.update_one(
+                {"user_id": selection.user_id},
+                {"$addToSet": {"preference.favorite_cuisines": selection.cuisine_type}},
+            )
+
+        return True
+    except Exception:
+        return False
+
+
+async def get_user_selections(
+    user_id: str,
+    limit: int = 20,
+    skip: int = 0,
+) -> list[Selection]:
+    """Return the most recent selections for a user."""
+    cursor = (
+        get_db()
+        .selections.find({"user_id": user_id})
+        .sort("selected_at", -1)
+        .skip(skip)
+        .limit(limit)
+    )
+    selections = []
+    async for doc in cursor:
+        selections.append(Selection(**doc))
+    return selections
 
 
 async def get_selection_count(user_id: str) -> int:
-    """Return total number of selections for a user."""
-    store = _read_store("selections.json")
-    return sum(1 for s in store.get("selections", []) if s.get("user_id") == user_id)
-
-
-async def save_selection(
-    selection: Selection,
-    update_preference: bool = False,
-) -> bool:
-    """Insert or update a selection. Optionally update user cuisine preference."""
-    store = _read_store("selections.json")
-    store.setdefault("selections", [])
-
-    # Check for existing
-    for i, sel in enumerate(store["selections"]):
-        if sel.get("user_id") == selection.user_id and sel.get("place_id") == selection.place_id:
-            store["selections"][i].update(selection.model_dump())
-            _write_store("selections.json", store)
-            logger.info("selection_updated", user_id=selection.user_id, place_id=selection.place_id)
-            return True
-
-    # New selection
-    store["selections"].append(selection.model_dump())
-    _write_store("selections.json", store)
-    logger.info("selection_saved", user_id=selection.user_id, place_id=selection.place_id)
-
-    # Update cuisine preference
-    if update_preference and selection.cuisine_type:
-        await _add_favorite_cuisine(selection.user_id, selection.cuisine_type)
-
-    return True
-
-
-async def _add_favorite_cuisine(user_id: str, cuisine: str) -> None:
-    """Add a cuisine to the user's favorite list."""
-    store = _read_store("users.json")
-    if user_id not in store:
-        return
-    favs = store[user_id].setdefault("preference", {}).setdefault("favorite_cuisines", [])
-    if cuisine not in favs:
-        favs.append(cuisine)
-    _write_store("users.json", store)
+    """Return the total number of selections for a user."""
+    return await get_db().selections.count_documents({"user_id": user_id})
 
 
 async def get_top_cuisines(user_id: str, limit: int = 5) -> list[dict]:
-    """Return the most frequently selected cuisines for a user."""
-    store = _read_store("selections.json")
-    counts: dict[str, int] = {}
-    for sel in store.get("selections", []):
-        if sel.get("user_id") == user_id and sel.get("cuisine_type"):
-            cuisine = sel["cuisine_type"]
-            counts[cuisine] = counts.get(cuisine, 0) + 1
-    sorted_cuisines = sorted(counts.items(), key=lambda x: x[1], reverse=True)
-    return [{"cuisine": c, "count": n} for c, n in sorted_cuisines[:limit]]
+    """Return the user's most-frequently selected cuisines."""
+    pipeline = [
+        {"$match": {"user_id": user_id}},
+        {"$group": {"_id": "$cuisine_type", "count": {"$sum": 1}}},
+        {"$sort": {"count": -1}},
+        {"$limit": limit},
+    ]
+    result = []
+    async for doc in get_db().selections.aggregate(pipeline):
+        result.append({"cuisine": doc["_id"], "count": doc["count"]})
+    return result
