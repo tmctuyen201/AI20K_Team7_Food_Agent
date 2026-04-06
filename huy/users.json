@@ -1,0 +1,94 @@
+{
+  "mock_users": [
+    {
+      "user_id": "U001",
+      "name": "Huy",
+      "location": {
+        "address": "22 Lê Thánh Tôn, Phường Bến Nghé, Quận 1, TP.HCM",
+        "lat": 10.7795,
+        "lng": 106.7038
+      }
+    },
+    {
+      "user_id": "U002",
+      "name": "Duy Anh",
+      "location": {
+        "address": "126 Chùa Láng, Phường Láng Thượng, Quận Đống Đa, Hà Nội",
+        "lat": 21.0225,
+        "lng": 105.8019
+      }
+    },
+    {
+      "user_id": "U003",
+      "name": "Nhung",
+      "location": {
+        "address": "81 Lý Chính Thắng, Phường Võ Thị Sáu, Quận 3, TP.HCM",
+        "lat": 10.7872,
+        "lng": 106.6852
+      }
+    },
+    {
+      "user_id": "U004",
+      "name": "Tuyền",
+      "location": {
+        "address": "254 Hoàng Diệu, Phường Nam Dương, Quận Hải Châu, Đà Nẵng",
+        "lat": 16.0612,
+        "lng": 108.2158
+      }
+    },
+    {
+      "user_id": "U005",
+      "name": "Phú",
+      "location": {
+        "address": "1 Tràng Tiền, Phường Phan Chu Trinh, Quận Hoàn Kiếm, Hà Nội",
+        "lat": 21.0245,
+        "lng": 105.8588
+      }
+    },
+    {
+      "user_id": "U006",
+      "name": "Minh",
+      "location": {
+        "address": "1 Võ Văn Ngân, Phường Linh Chiểu, Thủ Đức, TP.HCM",
+        "lat": 10.8514,
+        "lng": 106.7585
+      }
+    },
+    {
+      "user_id": "U007",
+      "name": "Lan",
+      "location": {
+        "address": "105 Huyền Trân Công Chúa, Phường Hòa Hải, Quận Ngũ Hành Sơn, Đà Nẵng",
+        "lat": 15.9994,
+        "lng": 108.2631
+      }
+    },
+    {
+      "user_id": "U008",
+      "name": "Tuấn",
+      "location": {
+        "address": "19 Ngọc Hà, Phường Đội Cấn, Quận Ba Đình, Hà Nội",
+        "lat": 21.0368,
+        "lng": 105.8342
+      }
+    },
+    {
+      "user_id": "U009",
+      "name": "Vy",
+      "location": {
+        "address": "10 Mai Chí Thọ, Phường Thủ Thiêm, Quận 2, TP.HCM",
+        "lat": 10.7749,
+        "lng": 106.7218
+      }
+    },
+    {
+      "user_id": "U010",
+      "name": "Hoàng",
+      "location": {
+        "address": "1 Hai Bà Trưng, Phường Tân An, Quận Ninh Kiều, Cần Thơ",
+        "lat": 10.0342,
+        "lng": 105.7889
+      }
+    }
+  ]
+}
