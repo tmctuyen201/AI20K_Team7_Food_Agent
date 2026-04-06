@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-import jwt
+from jose import jwt
 
 from app.core.config import settings
 from app.core.logging import get_logger

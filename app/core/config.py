@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     # Google APIs
     google_places_api_key: str = ""
     google_geocoding_api_key: str = ""
+    serp_api_key: str = ""
 
     # MongoDB
     mongodb_uri: str = "mongodb://localhost:27017/foodie_agent"

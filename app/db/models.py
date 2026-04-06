@@ -26,6 +26,8 @@ class LocationResult(BaseModel):
     lng: float
     source: str = "unknown"
     confidence: float = 0.0
+    needs_confirmation: bool = False
+    suggested_addresses: list[str] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------

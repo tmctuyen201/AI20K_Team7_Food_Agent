@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import json
 import time
-from typing import Any
+from typing import Any, AsyncIterator
 
 from app.agent.prompt import build_system_prompt, build_guardrail_prompt
 from app.agent.state import AgentState, ToolCall
-from app.core.logging import get_agent_logger, get_llm_logger, get_tool_logger
+from app.core.logging import get_agent_logger, get_llm_logger, get_tool_logger, log_tool_call, log_tool_result, log_agent_step
 
 agent_logger = get_agent_logger()
 llm_logger = get_llm_logger()
@@ -104,14 +104,16 @@ class ReActAgent:
                     "content": f"Tool result: {result}",
                 })
 
-            # Check guardrail
-            if state.get("guardrail_triggered"):
-                guardrail_msg = state.get("guardrail_message", "")
-                state["final_response"] = guardrail_msg
+            # ── Guardrail check after each tool-execution iteration ──────────────
+            guardrail_result = check_guardrails(state)
+            if guardrail_result.triggered:
+                state["guardrail_triggered"] = guardrail_result.name
+                state["guardrail_message"] = guardrail_result.message
+                state["final_response"] = guardrail_result.message
                 state["is_done"] = True
                 agent_logger.warning(
                     "agent_guardrail_triggered",
-                    guardrail=state["guardrail_triggered"],
+                    guardrail=guardrail_result.name,
                     user_id=state.get("user_id"),
                     iteration=iteration,
                 )
@@ -130,6 +132,214 @@ class ReActAgent:
             state["is_done"] = True
 
         return state
+
+    async def run_streaming(
+        self,
+        state: AgentState,
+        user_id: str,
+        session_id: str,
+        model: str | None = None,
+    ) -> AsyncIterator[dict]:
+        """Streaming version of run() that yields step events.
+
+        Yields dicts with:
+            - {"type": "reasoning", "step": N, "text": "...", "tool": None|str}
+            - {"type": "tool_result", "tool": str, "result": str, "error": None|str}
+
+        The ``stream`` param to ``llm_chat`` stays False (tool calling requires
+        non-streaming to read tool_calls cleanly from the full message).
+        """
+        from app.core.provider import llm_chat
+        from app.core.logging import get_agent_step_logger
+
+        step_logger = get_agent_step_logger(session_id)
+        effective_model = model or "default"
+        version_label = "v1"
+
+        agent_logger.info(
+            "agent_run_streaming_start",
+            user_id=user_id,
+            session_id=session_id,
+            user_message=state.get("user_message", "")[:100],
+        )
+
+        iteration = 0
+        while iteration < self.max_iterations:
+            iteration += 1
+            state["iteration"] = iteration
+
+            log_agent_step(
+                step_logger,
+                step=iteration,
+                phase="think",
+                model=effective_model,
+                version=version_label,
+                user_id=user_id,
+                session_id=session_id,
+                message=f"[Step {iteration}] Thinking...",
+            )
+            yield {
+                "type": "reasoning",
+                "step": iteration,
+                "text": f"[Step {iteration}] Thinking...",
+                "tool": None,
+            }
+
+            # Build messages for this turn
+            messages = self._build_messages(state)
+
+            # Call LLM with tools (no streaming — tool_calls live in full message)
+            response = await llm_chat(
+                messages=messages,
+                tools=self.tools,
+                stream=False,
+            )
+
+            # Check for tool calls in response
+            tool_calls = self._extract_tool_calls(response)
+
+            if not tool_calls:
+                # No tool call → agent gave final answer
+                final_text = self._extract_text(response)
+                state["final_response"] = final_text
+                state["is_done"] = True
+
+                log_agent_step(
+                    step_logger,
+                    step=iteration,
+                    phase="final",
+                    model=effective_model,
+                    version=version_label,
+                    user_id=user_id,
+                    session_id=session_id,
+                    message="Final response ready",
+                )
+                yield {
+                    "type": "reasoning",
+                    "step": iteration,
+                    "text": "Final response ready",
+                    "tool": None,
+                }
+                return
+
+            # Execute each tool call
+            for tc in tool_calls:
+                tool_name = tc.get("name", "")
+
+                log_tool_call(
+                    step_logger,
+                    step=iteration,
+                    tool=tool_name,
+                    args=tc.get("arguments", "")[:500],
+                    user_id=user_id,
+                    session_id=session_id,
+                )
+                yield {
+                    "type": "reasoning",
+                    "step": iteration,
+                    "text": f"Calling {tool_name}...",
+                    "tool": tool_name,
+                }
+
+                result_str = await self._execute_tool(tc, state)
+
+                log_tool_result(
+                    step_logger,
+                    step=iteration,
+                    tool=tool_name,
+                    places_count=None,
+                    error=None,
+                    user_id=user_id,
+                    session_id=session_id,
+                )
+                yield {
+                    "type": "tool_result",
+                    "tool": tool_name,
+                    "result": result_str,
+                    "error": None,
+                }
+
+                # Append tool result as assistant + user messages for next iteration
+                messages.append({
+                    "role": "assistant",
+                    "content": str(tc),
+                })
+                messages.append({
+                    "role": "user",
+                    "content": f"Tool result: {result_str}",
+                })
+
+            # ── Guardrail check after each tool-execution iteration ──────────────
+            from app.core.guardrail import check_guardrails
+            guardrail_result = check_guardrails(state)
+            if guardrail_result.triggered:
+                state["guardrail_triggered"] = guardrail_result.name
+                state["guardrail_message"] = guardrail_result.message
+                state["final_response"] = guardrail_result.message
+                state["is_done"] = True
+
+                log_agent_step(
+                    step_logger,
+                    step=iteration,
+                    phase="guardrail",
+                    model=effective_model,
+                    version=version_label,
+                    user_id=user_id,
+                    session_id=session_id,
+                    message=f"Guardrail triggered: {guardrail_result.name}",
+                )
+                yield {
+                    "type": "reasoning",
+                    "step": iteration,
+                    "text": f"Guardrail triggered: {guardrail_result.name}",
+                    "tool": None,
+                }
+                return
+
+            if state.get("is_done"):
+                log_agent_step(
+                    step_logger,
+                    step=iteration,
+                    phase="done",
+                    model=effective_model,
+                    version=version_label,
+                    user_id=user_id,
+                    session_id=session_id,
+                    message="Final response ready",
+                )
+                yield {
+                    "type": "reasoning",
+                    "step": iteration,
+                    "text": "Final response ready",
+                    "tool": None,
+                }
+                return
+
+        # Max iterations reached
+        agent_logger.warning(
+            "agent_max_iterations_reached",
+            user_id=user_id,
+            iterations=iteration,
+        )
+        state["final_response"] = "Tôi đang gặp khó khăn để tìm quán phù hợp. Bạn có thể mô tả rõ hơn không?"
+        state["is_done"] = True
+
+        log_agent_step(
+            step_logger,
+            step=iteration,
+            phase="max_iterations",
+            model=effective_model,
+            version=version_label,
+            user_id=user_id,
+            session_id=session_id,
+            message="Max iterations reached",
+        )
+        yield {
+            "type": "reasoning",
+            "step": iteration,
+            "text": "Final response ready",
+            "tool": None,
+        }
 
     # ── Private helpers ─────────────────────────────────────────────────────────
 
@@ -264,6 +474,7 @@ class ReActAgent:
     ) -> str:
         """Execute a tool call and log the result."""
         from app.core.provider import llm_chat_sync
+        from app.core.guardrail import check_guardrails
 
         tool_name = tool_call.get("name", "")
         raw_args = tool_call.get("arguments", "{}")
@@ -377,20 +588,32 @@ class ReActAgent:
                 lng=result.lng,
                 confidence=result.confidence,
                 city=result.city,
+                needs_confirmation=result.needs_confirmation,
             )
         finally:
             await service.close()
 
         state["location"] = result.to_dict()
 
-        # Add fallback note so LLM knows when mock data was used
+        # Track location source for guardrail checks
+        state["location_source"] = result.source
+
+        # Build response dict
         response = result.to_dict()
+
+        # Flag ambiguous location in state for guardrail
+        if result.needs_confirmation:
+            state["ambiguous_location"] = True
+            state["location_confidence"] = result.confidence
+
+        # Add warning for mock_data source
         if result.source == "mock_data":
-            response["_note"] = (
-                "WARNING: No GPS headers and geocoding failed or was not used. "
-                f"Returned mock data for user '{user_id}' (default location: Hà Nội). "
-                "This is NOT the user's real location. Inform the user about this limitation."
+            response["_warning"] = (
+                "Mình chưa xác định được vị trí chính xác của bạn. "
+                f"Đang dùng vị trí mặc định: {result.city}. "
+                "Bạn có thể cho biết địa chỉ hoặc khu vực đang ở không?"
             )
+
         return json.dumps(response)
 
     async def _tool_search_google_places(

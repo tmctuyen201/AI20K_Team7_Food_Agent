@@ -28,9 +28,11 @@ def check_guardrails(state: AgentState) -> GuardrailResult:
     Returns GuardrailResult indicating if a guardrail was triggered.
     """
     checkers = [
+        _check_ambiguous_location,
         _check_zero_results,
         _check_max_retries,
         _check_midnight_filter,
+        _check_mock_location,
     ]
 
     for checker in checkers:
@@ -41,21 +43,74 @@ def check_guardrails(state: AgentState) -> GuardrailResult:
     return GuardrailResult()
 
 
+# ── Individual guardrail checkers ──────────────────────────────────────────────
+
+def _check_ambiguous_location(state: AgentState) -> GuardrailResult:
+    """Ambiguous Location guardrail: confidence too low or multiple matches possible."""
+    if not state.get("ambiguous_location"):
+        return GuardrailResult()
+
+    logger.warning(
+        "guardrail_ambiguous_location",
+        confidence=state.get("location_confidence", 0),
+        user_id=state.get("user_id"),
+    )
+    return GuardrailResult(
+        triggered=True,
+        name="Ambiguous Location",
+        message=(
+            "Mình chưa xác định chính xác khu vực của bạn. "
+            "Bạn có thể cho biết rõ hơn địa chỉ hoặc thành phố/quận bạn đang ở không?"
+        ),
+    )
+
+
+def _check_mock_location(state: AgentState) -> GuardrailResult:
+    """Mock Location guardrail: used mock data when no GPS/headers available."""
+    location = state.get("location") or {}
+    source = location.get("source", "") or state.get("location_source", "")
+
+    if source != "mock_data":
+        return GuardrailResult()
+
+    # Only trigger if the user hasn't confirmed the address already
+    if state.get("address_confirmed"):
+        return GuardrailResult()
+
+    logger.warning(
+        "guardrail_mock_location",
+        user_id=state.get("user_id"),
+        source=source,
+    )
+    return GuardrailResult(
+        triggered=True,
+        name="Mock Location",
+        message=(
+            "Mình chưa xác định được vị trí chính xác của bạn. "
+            "Bạn có thể cho biết địa chỉ hoặc khu vực đang ở không?"
+        ),
+    )
+
+
 def _check_zero_results(state: AgentState) -> GuardrailResult:
     """Zero Result guardrail: API returned no results."""
     places = state.get("places_raw", [])
-    if not places and state.get("keyword"):
+    keyword = state.get("keyword", "")
+
+    if not places and keyword:
         logger.warning(
             "guardrail_zero_results",
-            keyword=state.get("keyword"),
+            keyword=keyword,
             user_id=state.get("user_id"),
         )
         return GuardrailResult(
             triggered=True,
             name="Zero Result",
             message=(
-                f"Không tìm thấy quán nào với từ khóa '{state.get('keyword')}' "
-                "trong khu vực này. Bạn muốn thử từ khóa khác hoặc tăng bán kính tìm kiếm không?"
+                f"Không tìm thấy quán nào với từ khóa '{keyword}' "
+                "trong bán kính 2km quanh đây.\n\n"
+                "Bạn có muốn mình mở rộng tìm kiếm ra 10km hoặc thử từ khóa khác "
+                "(như cơm, bún, hải sản) không?"
             ),
         )
     return GuardrailResult()
@@ -74,9 +129,9 @@ def _check_max_retries(state: AgentState) -> GuardrailResult:
             triggered=True,
             name="Max Retries",
             message=(
-                "Bạn đã không hài lòng với nhiều gợi ý. "
-                "Bạn có thể cho tôi biết thêm về ngân sách, "
-                "phong cách quán, hoặc khu vực bạn muốn không?"
+                "Dường như mình chưa tìm đúng gu của bạn. "
+                "Để chính xác hơn, bạn thích không gian như thế nào "
+                "(vỉa hè / sang trọng / bình dân) hoặc ngân sách khoảng bao nhiêu?"
             ),
         )
     return GuardrailResult()
@@ -85,28 +140,50 @@ def _check_max_retries(state: AgentState) -> GuardrailResult:
 def _check_midnight_filter(state: AgentState) -> GuardrailResult:
     """Midnight Filter: warn if few places are open (22:00 - 05:00)."""
     from datetime import datetime
+
     hour = datetime.now().hour
-    if not (22 <= hour or hour < 5):
+    # Late night / early morning: 22h - 5h
+    if not (hour >= 22 or hour < 5):
         return GuardrailResult()
 
     places = state.get("places_raw", [])
     open_places = [
         p for p in places
         if p.get("opening_hours", {}).get("open_now") is True
+        or p.get("open_now") is True
     ]
 
-    if places and len(open_places) < 5:
-        logger.warning(
-            "guardrail_midnight_filter",
-            open_count=len(open_places),
-            total_count=len(places),
+    if not places:
+        return GuardrailResult()
+
+    total = len(places)
+    open_count = len(open_places)
+
+    if open_count >= 5:
+        return GuardrailResult()
+
+    logger.warning(
+        "guardrail_midnight_filter",
+        open_count=open_count,
+        total_count=total,
+        hour=hour,
+    )
+
+    # Only 1-2 places open — suggest alternatives
+    if open_count == 0:
+        message = (
+            f"Hiện tại đã muộn ({hour}h), không có quán nào đang mở cửa. "
+            "Bạn có muốn mình tìm các quán ăn đêm/vỉa hè gần đây không?"
         )
-        return GuardrailResult(
-            triggered=True,
-            name="Midnight Filter",
-            message=(
-                f"Hiện tại chỉ có {len(open_places)} quán đang mở cửa. "
-                "Bạn có muốn xem danh sách này hay đợi đến sáng?"
-            ),
+    else:
+        open_names = ", ".join([p.get("name", "") for p in open_places[:2]])
+        message = (
+            f"Hiện tại đã muộn ({hour}h), chỉ có {open_count} quán đang mở: {open_names}. "
+            "Bạn có muốn mình tìm thêm các quán ăn đêm/vỉa hè khác cho bạn không?"
         )
-    return GuardrailResult()
+
+    return GuardrailResult(
+        triggered=True,
+        name="Midnight Filter",
+        message=message,
+    )
