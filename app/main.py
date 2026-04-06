@@ -43,7 +43,7 @@ async def run_chat(user_id: str, session_id: str) -> None:
     """Run a single chat session."""
     print(f"\n{'='*50}")
     print(f"Session: {session_id}")
-    print(f"User: {user_id}")
+    print(f"User: {user_id} (mock)")
     print(f"{'='*50}")
     print("\n💬 Bạn (gõ 'exit' để thoát, 'reset' để xóa cuộc trò chuyện):\n")
 

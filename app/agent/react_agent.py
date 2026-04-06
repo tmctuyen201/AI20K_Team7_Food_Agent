@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import time
 from typing import Any
 
@@ -60,6 +61,15 @@ class ReActAgent:
             # Build messages for this turn
             messages = self._build_messages(state)
 
+            llm_logger.debug(
+                "llm_messages_payload",
+                message_count=len(messages),
+                messages_preview=[
+                    {k: (v[:200] if isinstance(v, str) else v) for k, v in m.items()}
+                    for m in messages
+                ],
+            )
+
             # Call LLM with tools
             response = await self._call_llm(messages)
 
@@ -71,11 +81,13 @@ class ReActAgent:
                 final_text = self._extract_text(response)
                 state["final_response"] = final_text
                 state["is_done"] = True
-                agent_logger.info(
-                    "agent_run_done",
+                agent_logger.warning(
+                    "agent_run_done_no_tool",
                     user_id=state.get("user_id"),
-                    iterations=iteration,
-                    final_response_preview=final_text[:200] if final_text else "",
+                    iteration=iteration,
+                    has_tools=bool(self.tools),
+                    final_response_preview=final_text[:300] if final_text else "(empty)",
+                    tools=[t["function"]["name"] for t in self.tools],
                 )
                 break
 
@@ -167,10 +179,28 @@ class ReActAgent:
             )
             elapsed_ms = (time.monotonic() - start) * 1000
 
-            llm_logger.info(
+            tool_calls = self._extract_tool_calls(response)
+            raw_response = ""
+            try:
+                choices = getattr(response, "choices", []) or []
+                msg = choices[0].message if choices else None
+                raw_response = f"content={getattr(msg, 'content', None)!r} tool_calls={getattr(msg, 'tool_calls', None)!r}"
+            except Exception as e:
+                raw_response = f"parse_error: {e}"
+            llm_logger.warning(
                 "llm_call_completed",
                 elapsed_ms=round(elapsed_ms, 1),
-                has_tool_calls=bool(self._extract_tool_calls(response)),
+                has_tool_calls=bool(tool_calls),
+                tool_names=[tc["name"] for tc in tool_calls] if tool_calls else None,
+                response_text_preview=(
+                    self._extract_text(response)[:500]
+                    if not tool_calls else None
+                ),
+                raw_response=raw_response,
+                system_prompt_preview=messages[0]["content"][:300] if messages else "",
+                user_message=messages[-1]["content"] if messages else "",
+                tool_count=len(self.tools),
+                tool_names_available=[t["function"]["name"] for t in self.tools],
             )
             return response
 
@@ -186,7 +216,28 @@ class ReActAgent:
     def _extract_tool_calls(self, response: Any) -> list[dict]:
         try:
             choices = getattr(response, "choices", []) or []
+            if not choices:
+                return []
+
+            # stream=False → tool_calls live in message, not delta
+            msg = choices[0].message if choices else None
+            if msg is None:
+                return []
+
+            tool_calls = getattr(msg, "tool_calls", None) or []
+            if tool_calls:
+                return [
+                    {
+                        "name": tc.function.name,
+                        "arguments": tc.function.arguments,
+                    }
+                    for tc in tool_calls
+                ]
+
+            # Fallback: stream=True delta (first chunk may be partial)
             delta = choices[0].delta if choices else None
+            if delta is None:
+                return []
             tool_calls = getattr(delta, "tool_calls", None) or []
             return [
                 {
@@ -296,22 +347,51 @@ class ReActAgent:
         args: dict,
         state: AgentState,
     ) -> str:
-        """Get user location from GPS header, geocoding, or mock data."""
-        from app.services.geocoding import geocode_address
-        from app.tools.mock_data import get_mock_location
+        """Get user location via LocationService (GPS → geocoding → mock)."""
+        from app.services.location_service import LocationService
 
-        user_id = args.get("user_id") or state.get("user_id", "")
+        user_id = str(args.get("user_id") or state.get("user_id", ""))
+        address = args.get("address")
+        headers = state.get("headers")
 
-        # Try GPS header / state
-        location = state.get("location")
-        if location:
-            return json.dumps({"lat": location["lat"], "lng": location["lng"]})
+        tool_logger.info(
+            "tool_get_user_location_start",
+            user_id=user_id,
+            address=address,
+            has_headers=headers is not None,
+            headers=headers,
+        )
 
-        # Try geocoding (if address was provided)
-        # For now, use mock
-        mock = get_mock_location(user_id)
-        state["location"] = {"lat": mock["lat"], "lng": mock["lng"]}
-        return json.dumps({"lat": mock["lat"], "lng": mock["lng"], "city": mock["city"]})
+        service = LocationService()
+        try:
+            result = await service.get_user_location(
+                user_id=user_id,
+                address=address,
+                headers=headers,
+            )
+            tool_logger.info(
+                "tool_get_user_location_result",
+                user_id=user_id,
+                source=result.source,
+                lat=result.lat,
+                lng=result.lng,
+                confidence=result.confidence,
+                city=result.city,
+            )
+        finally:
+            await service.close()
+
+        state["location"] = result.to_dict()
+
+        # Add fallback note so LLM knows when mock data was used
+        response = result.to_dict()
+        if result.source == "mock_data":
+            response["_note"] = (
+                "WARNING: No GPS headers and geocoding failed or was not used. "
+                f"Returned mock data for user '{user_id}' (default location: Hà Nội). "
+                "This is NOT the user's real location. Inform the user about this limitation."
+            )
+        return json.dumps(response)
 
     async def _tool_search_google_places(
         self,
@@ -366,27 +446,46 @@ class ReActAgent:
         args: dict,
         state: AgentState,
     ) -> str:
-        """Save user selection to history."""
+        """Save user selection to JSON store."""
+        import json
+
         from app.services.history import save_selection
 
-        user_id = args.get("user_id") or state.get("user_id", "")
-        place = args.get("place")
+        user_id = str(args.get("user_id") or state.get("user_id", ""))
+        place_id = str(args.get("place_id", ""))
+        name = str(args.get("name", ""))
+        cuisine_type = args.get("cuisine_type")
+        rating = float(args.get("rating", 0.0))
 
-        if isinstance(place, str):
-            import json
-            place = json.loads(place)
+        # If the LLM passes a "place" dict instead of flat args, unpack it
+        if not name and not place_id:
+            place = args.get("place")
+            if isinstance(place, str):
+                place = json.loads(place)
+            if place:
+                place_id = str(place.get("place_id", ""))
+                name = str(place.get("name", ""))
+                cuisine_type = place.get("cuisine_type")
+                rating = float(place.get("rating", 0.0))
 
-        await save_selection(user_id, place)
-        return json.dumps({"status": "saved"})
+        result = await save_selection(user_id, {
+            "place_id": place_id,
+            "name": name,
+            "cuisine_type": cuisine_type,
+            "rating": rating,
+        })
+        return json.dumps(result)
 
     async def _tool_get_user_preference(
         self,
         args: dict,
         state: AgentState,
     ) -> str:
-        """Get user preference from history."""
+        """Get user preference from JSON store."""
+        import json
+
         from app.services.history import get_user_preference
 
-        user_id = args.get("user_id") or state.get("user_id", "")
+        user_id = str(args.get("user_id") or state.get("user_id", ""))
         pref = await get_user_preference(user_id)
-        return json.dumps(pref or {})
+        return json.dumps(pref)

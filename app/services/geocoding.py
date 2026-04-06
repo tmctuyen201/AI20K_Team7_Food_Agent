@@ -1,4 +1,4 @@
-"""Google Geocoding API client."""
+"""Geocoding API client — Nominatim (OpenStreetMap), no API key required."""
 
 from __future__ import annotations
 
@@ -7,17 +7,16 @@ from typing import Any
 
 import httpx
 
-from app.core.config import settings
 from app.core.exceptions import GeocodingAPIError
 from app.core.logging import get_logger
 
 logger = get_logger("foodie.geocoding")
 
-GEOCODE_URL = "https://maps.googleapis.com/maps/api/geocode/json"
+NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
 
 
 async def geocode_address(address: str) -> dict[str, Any]:
-    """Convert a text address to lat/lng via Google Geocoding API.
+    """Convert a text address to lat/lng via Nominatim (OpenStreetMap).
 
     Args:
         address: Human-readable address string.
@@ -29,46 +28,50 @@ async def geocode_address(address: str) -> dict[str, Any]:
         GeocodingAPIError: On API failure or zero results.
     """
     params = {
-        "address": address,
-        "key": settings.google_geocoding_api_key or settings.google_places_api_key,
+        "q": address,
+        "format": "json",
+        "limit": "1",
+        "addressdetails": "1",
+    }
+    headers = {
+        "User-Agent": "FoodieAgent/1.0 (vinai.chatbot)",
     }
 
-    logger.info(
-        "geocoding_request",
-        address=address,
-    )
+    logger.info("geocoding_request", address=address, provider="nominatim")
 
     start = time.monotonic()
     async with httpx.AsyncClient(timeout=10.0) as client:
-        response = await client.get(GEOCODE_URL, params=params)
+        response = await client.get(NOMINATIM_URL, params=params, headers=headers)
 
     elapsed_ms = (time.monotonic() - start) * 1000
     data = response.json()
 
-    status = data.get("status", "UNKNOWN")
-
-    if status == "ZERO_RESULTS":
+    if not data:
         raise GeocodingAPIError(f"No results for address: {address}")
 
-    if status != "OK":
-        raise GeocodingAPIError(f"Geocoding API error: {status}")
+    result = data[0]
+    lat = float(result["lat"])
+    lng = float(result["lon"])
+    display_name = result.get("display_name", address)
 
-    result = data["results"][0]
-    location = result["geometry"]["location"]
-    confidence = 1.0  # Google doesn't expose confidence score directly
+    # Nominatim doesn't expose a numeric confidence — estimate from importance field
+    importance = float(result.get("importance", 0.5))
+    confidence = min(0.5 + importance * 0.5, 1.0)
 
     logger.info(
         "geocoding_success",
         address=address,
-        lat=location["lat"],
-        lng=location["lng"],
+        lat=lat,
+        lng=lng,
+        display_name=display_name,
         confidence=confidence,
+        provider="nominatim",
         elapsed_ms=round(elapsed_ms, 1),
     )
 
     return {
-        "lat": location["lat"],
-        "lng": location["lng"],
+        "lat": lat,
+        "lng": lng,
         "confidence": confidence,
-        "formatted_address": result.get("formatted_address", address),
+        "formatted_address": display_name,
     }

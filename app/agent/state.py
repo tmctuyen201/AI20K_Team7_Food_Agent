@@ -14,6 +14,7 @@ class AgentState(TypedDict, total=False):
     user_message: str
     intent: str | None
     location: dict | None
+    headers: dict | None
     keyword: str | None
     sort_by: str
     radius: int
