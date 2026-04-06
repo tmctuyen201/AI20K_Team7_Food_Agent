@@ -358,19 +358,60 @@ Dùng để tính `distance_km` chính xác cho ScoringTool thay vì công thứ
 
 ## 7. Dependencies
 
-```toml
-# pyproject.toml
-[tool.poetry.dependencies]
-python            = "^3.11"
-fastapi           = "^0.111"
-uvicorn           = { extras = ["standard"], version = "^0.30" }
-langchain         = "^0.2"
-langgraph         = "^0.1"
-litellm           = "^1.40"       # abstraction layer cho LLM providers
-motor             = "^3.4"        # async MongoDB driver
-pydantic          = "^2.7"
-pydantic-settings = "^2.3"
-python-jose       = "^3.3"        # JWT
-slowapi           = "^0.1"        # rate limiting
-httpx             = "^0.27"       # async HTTP client gọi Google APIs
-```
+---
+
+## 8. Coding Conventions & Best Practices
+
+### 8.1 Code Style
+
+**Tool:** `ruff` + `black` + `isort`
+
+**Pre-commit hooks (`pre-commit-config.yaml`):**
+
+### 8.2 Naming Conventions
+
+| Loại            | Convention       | Ví dụ                                   |
+| --------------- | ---------------- | --------------------------------------- |
+| Class           | PascalCase       | `GoogleSearchTool`, `UserPreference`    |
+| Function/Method | snake_case       | `calculate_scores`, `get_user_location` |
+| Variable        | snake_case       | `user_id`, `place_id`, `session_id`     |
+| Constant        | UPPER_SNAKE_CASE | `MAX_RETRIES`, `DEFAULT_RADIUS`         |
+| Private method  | `_snake_case`    | `_parse_response`, `_build_headers`     |
+| Async function  | `async_<verb>`   | `async_get_places`, `async_save_user`   |
+| Environment var | UPPER_SNAKE_CASE | `GOOGLE_PLACES_API_KEY`                 |
+
+### 8.3 Type Annotations
+
+**Bắt buộc** cho tất cả function parameters, return values, và class attributes.
+
+### 8.4 Docstring Format
+
+Dùng Google style docstrings:
+
+### 8.5 Error Handling
+
+### 8.6 Logging Standards
+
+### 8.7 Import Order (isort)
+
+### 8.8 Async/Await Best Practices
+
+### 8.9 Testing Conventions
+
+---
+
+## 9. Docker Configuration
+
+### 9.1 Dockerfile
+
+### 9.2 Multi-stage Build (Production)
+
+### 9.3 docker-compose.yml
+
+### 9.4 docker-compose.prod.yml
+
+### 9.5 .dockerignore
+
+### 9.6 Health Check Endpoint
+
+### 9.7 Build & Run Commands
