@@ -1,216 +1,160 @@
-# Backend-3: Tools
+import math
+import requests
 
-## Architecture Overview
+SERP_API_KEY = "c2f31a0fdeb43857c8163649f9478603b13db8034a8ff98a5275d99eb2034820"
 
-Foodie Agent là ReAct-based chatbot tìm quán ăn qua Google Places API.
 
-**Tech stack:** Python · FastAPI · LangGraph · MongoDB · Google Maps Platform
+def haversine_km(lat1, lng1, lat2, lng2):
+    """Tính khoảng cách chim bay giữa 2 tọa độ theo km."""
+    r = 6371.0
 
-### Project Structure
+    phi1 = math.radians(lat1)
+    phi2 = math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dlambda = math.radians(lng2 - lng1)
 
-```
-app/
-├── main.py               # FastAPI app, router mount
-├── api/
-│   ├── chat.py           # WebSocket endpoint
-│   ├── session.py        # Auth endpoints
-│   └── history.py        # History endpoints
-├── agent/                # ReAct Agent
-├── tools/                # ⭐ Tool definitions
-├── db/                   # MongoDB models & queries
-├── services/             # Google API clients
-└── core/
-    ├── config.py         # Env vars
-    ├── auth.py           # JWT logic
-    └── guardrail.py      # Guardrail layer
-```
+    a = (
+        math.sin(dphi / 2) ** 2
+        + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2) ** 2
+    )
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    return r * c
 
----
 
-## Feature: Tools
+def format_distance(km):
+    """Format khoảng cách để không bao giờ bị None."""
+    if km is None:
+        return "N/A"
+    if km < 1:
+        return f"{int(round(km * 1000))} m"
+    return f"{km:.2f} km"
 
-Mỗi tool là một Python class kế thừa `BaseTool` của LangChain.
 
-### 4 Tools cần implement
+def build_query(keyword, preference):
+    """Tạo query tự nhiên hơn cho Google Maps."""
+    keyword = keyword.strip()
 
----
+    if preference == "distance":
+        return f"{keyword} gần đây"
+    if preference == "prominence":
+        return f"{keyword} ngon"
+    return keyword
 
-### 3.1 LocationTool
 
-**Nhiệm vụ:** Lấy tọa độ `lat/lng` của user.
+def extract_price(place):
+    """
+    Lấy thông tin giá nếu có.
+    SerpApi/Google Maps có thể trả về dưới nhiều field khác nhau.
+    """
+    possible_keys = [
+        "price",
+        "price_level",
+        "pricing",
+    ]
 
-**Luồng xử lý:**
+    for key in possible_keys:
+        value = place.get(key)
+        if value:
+            return value
 
-1. Thử đọc GPS từ request header (`X-User-Lat`, `X-User-Lng`)
-2. Nếu không có → gọi Geocoding API với địa chỉ text user nhập
-3. Nếu Geocoding thất bại → tra cứu mock data theo `user_id`
+    return None
 
-```python
-class LocationTool(BaseTool):
-    name = "get_user_location"
-    description = "Get lat/lng coordinates for a user"
 
-    def _run(self, user_id: str, address: str = None) -> LatLng:
-        # 1. Check headers
-        lat = request.headers.get("X-User-Lat")
-        lng = request.headers.get("X-User-Lng")
-        if lat and lng:
-            return LatLng(lat=float(lat), lng=float(lng))
+def search_restaurants(lat, lng, keyword, preference="prominence"):
+    """
+    lat, lng: tọa độ user
+    keyword: món ăn, ví dụ 'phở', 'bún chả'
+    preference: 'distance' hoặc 'prominence'
+    """
+    query = build_query(keyword, preference)
 
-        # 2. Geocoding if address provided
-        if address:
-            return geocoding_service.geocode(address)
+    params = {
+        "engine": "google_maps",
+        "type": "search",
+        "q": query,
+        "ll": f"@{lat},{lng},17z",
+        "hl": "vi",
+        "gl": "vn",
+        "no_cache": "true",
+        "api_key": SERP_API_KEY,
+    }
 
-        # 3. Fallback to mock data
-        return mock_data.get_location(user_id)
-```
+    response = requests.get("https://serpapi.com/search", params=params, timeout=30)
+    response.raise_for_status()
+    data = response.json()
 
-**Mock data (từ db/mock_data.py):**
+    if "error" in data:
+        raise Exception(data["error"])
 
-```python
-MOCK_USERS = [
-    {"user_id": "u01", "name": "Minh", "lat": 21.0285, "lng": 105.8542, "city": "Hà Nội - Hoàn Kiếm"},
-    {"user_id": "u02", "name": "Linh", "lat": 10.7769, "lng": 106.7009, "city": "TP.HCM - Quận 1"},
-    {"user_id": "u03", "name": "Hùng", "lat": 16.0544, "lng": 108.2022, "city": "Đà Nẵng - Hải Châu"},
-    # ... 10 users total
-]
-```
+    results = data.get("local_results", [])
+    restaurants = []
 
----
+    for place in results:
+        gps = place.get("gps_coordinates") or {}
+        place_lat = gps.get("latitude")
+        place_lng = gps.get("longitude")
 
-### 3.2 GoogleSearchTool
+        computed_distance = None
+        if place_lat is not None and place_lng is not None:
+            computed_distance = haversine_km(lat, lng, place_lat, place_lng)
 
-**Nhiệm vụ:** Truy vấn Google Places API, trả danh sách quán thô.
+        distance_text = place.get("distance")
+        if not distance_text:
+            distance_text = format_distance(computed_distance)
 
-```python
-class GoogleSearchTool(BaseTool):
-    name = "search_google_places"
-    description = "Search restaurants near a location"
-
-    def _run(self,
-             location: LatLng,
-             keyword: str,
-             sort_by: str = "prominence",
-             radius: int = 2000,
-             open_now: bool = True,
-             next_page_token: str = None) -> list[Place]:
-
-        params = {
-            "location": f"{location.lat},{location.lng}",
-            "radius": radius,
-            "keyword": keyword,
-            "opennow": open_now,
-            "rankby": sort_by,
-            "pagetoken": next_page_token,
+        restaurant = {
+            "name": place.get("title", "Không rõ tên"),
+            "rating": place.get("rating", 0),
+            "reviews": place.get("reviews", 0),
+            "address": place.get("address", "Không rõ địa chỉ"),
+            "distance": distance_text,
+            "distance_km": computed_distance if computed_distance is not None else float("inf"),
         }
-        return places_client.nearby_search(params)
-```
 
-**Sort strategy:**
+        price = extract_price(place)
+        if price:
+            restaurant["price"] = price
 
-| Preference | `sort_by` | Ghi chú |
-|------------|-----------|---------|
-| Gần nhất | `distance` | Bỏ `radius`, bắt buộc theo Places API |
-| Ngon nhất | `prominence` | Radius mặc định 2000m |
-| Cân bằng | `prominence` | Kết hợp với ScoringTool |
+        restaurants.append(restaurant)
 
----
+    if preference == "distance":
+        restaurants.sort(key=lambda x: x["distance_km"])
+    else:
+        restaurants.sort(
+            key=lambda x: (
+                x["rating"] if x["rating"] is not None else 0,
+                x["reviews"] if x["reviews"] is not None else 0,
+                -(x["distance_km"] if x["distance_km"] != float("inf") else 999999),
+            ),
+            reverse=True,
+        )
 
-### 3.3 ScoringTool
+    return restaurants, data
 
-**Nhiệm vụ:** Tính điểm tổng hợp và xếp hạng Top 5.
 
-**Công thức:**
+def main():
+    lat = 20.991262659315687
+    lng = 105.94620560858695
+    keyword = "phở"
+    preference = "distance"   # "distance" hoặc "prominence"
 
-```
-Score = (Rating × W_quality) + (1 / Distance_km × W_distance)
-```
+    results, raw = search_restaurants(lat, lng, keyword, preference)
 
-**Trọng số mặc định:** `W_quality = 0.6`, `W_distance = 0.4`
+    print("=== DEBUG ===")
+    print("Search params location:", f"@{lat},{lng},17z")
+    print("Results found:", len(results))
+    print("")
 
-**Điều chỉnh tự động theo ngữ cảnh:**
+    print("=== KẾT QUẢ ===")
+    for i, r in enumerate(results[:5], 1):
+        print(f"{i}. {r['name']}")
+        print(f"   ⭐ Rating: {r['rating']}")
+        print(f"   📍 Address: {r['address']}")
+        print(f"   🚶 Distance: {r['distance']}")
+        if "price" in r:
+            print(f"   💰 Price: {r['price']}")
+        print("")
 
-- User nói "đang rất đói" → `W_distance = 0.8`
-- User nói "muốn ăn ngon" → `W_quality = 0.8`
 
-```python
-class ScoringTool(BaseTool):
-    name = "calculate_scores"
-    description = "Score and rank restaurants"
-
-    def _run(self,
-             places: list[Place],
-             w_quality: float = 0.6,
-             w_distance: float = 0.4) -> list[ScoredPlace]:
-
-        for place in places:
-            place.score = (
-                place.rating * w_quality +
-                (1 / max(place.distance_km, 0.1)) * w_distance
-            )
-        return sorted(places, key=lambda p: p.score, reverse=True)[:5]
-```
-
----
-
-### 3.4 MemoryTool
-
-**Nhiệm vụ:** Đọc/ghi preference và lịch sử của user vào MongoDB.
-
-```python
-class MemoryTool(BaseTool):
-    name = "memory_tool"
-    description = "Read/write user preferences and history"
-
-    def get_preference(self, user_id: str) -> UserPreference:
-        return db.users.find_one({"user_id": user_id}, {"preference": 1})
-
-    def save_selection(self, user_id: str, place: Place) -> None:
-        db.selections.insert_one({
-            "user_id": user_id,
-            "place_id": place.place_id,
-            "name": place.name,
-            "cuisine": place.cuisine_type,
-            "selected_at": datetime.utcnow(),
-        })
-        self._update_preference(user_id, place.cuisine_type)
-
-    def get_shown_places(self, session_id: str) -> list[str]:
-        """Lấy place_id đã hiển thị để tránh trùng."""
-        return db.sessions.find_one({"session_id": session_id})["shown_place_ids"]
-```
-
----
-
-## Dependencies
-
-- **Uses:** `app/db/` (MongoDB queries)
-- **Uses:** `app/services/` (Google API clients)
-- **Used by:** `app/agent/nodes.py` (agent calls tools)
-
----
-
-## Files to Create
-
-```
-app/tools/
-├── __init__.py
-├── base.py              # BaseTool abstract class
-├── location_tool.py     # ⭐
-├── google_search_tool.py # ⭐
-├── scoring_tool.py      # ⭐
-├── memory_tool.py       # ⭐
-└── registry.py         # Tool registry for agent
-```
-
----
-
-## Checklist
-
-- [ ] `app/tools/base.py` - BaseTool abstract class
-- [ ] `app/tools/location_tool.py` - Get user location
-- [ ] `app/tools/google_search_tool.py` - Search Places API
-- [ ] `app/tools/scoring_tool.py` - Score & rank
-- [ ] `app/tools/memory_tool.py` - Read/write user data
-- [ ] `app/tools/registry.py` - Register all tools
-- [ ] Unit tests cho mỗi tool
+if __name__ == "__main__":
+    main()

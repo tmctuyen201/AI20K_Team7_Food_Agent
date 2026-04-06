@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from sqlalchemy import true
+
 from app.core.logging import get_logger
 
 logger = get_logger("foodie.tool_definitions")
@@ -34,38 +36,34 @@ def get_tool_definitions() -> list[dict]:
         {
             "type": "function",
             "function": {
-                "name": "search_google_places",
-                "description": "Search Google Places API for restaurants near a location. "
-                               "Returns a list of places with basic info.",
+                "name": "Search Places API",
+                "description": "Tìm kiếm quán ăn qua Google Maps dựa trên tọa độ và từ khóa. Trả về JSON gồm: tên, đánh giá, địa chỉ, khoảng cách và giá cả.",
                 "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "location": {
-                            "type": "object",
-                            "description": "Location dict with lat/lng",
-                        },
-                        "keyword": {
-                            "type": "string",
-                            "description": "Search keyword (e.g. 'phở', 'cơm tấm')",
-                        },
-                        "sort_by": {
-                            "type": "string",
-                            "enum": ["prominence", "distance"],
-                            "description": "How to rank results",
-                        },
-                        "radius": {
-                            "type": "integer",
-                            "description": "Search radius in meters",
-                        },
-                        "open_now": {
-                            "type": "boolean",
-                            "description": "Only return places open now",
-                        },
+                "type": "object",
+                "properties": {
+                    "lat": {
+                    "type": "number",
+                    "description": "Vĩ độ hiện tại của người dùng (Latitude)."
                     },
-                    "required": ["keyword"],
+                    "lng": {
+                    "type": "number",
+                    "description": "Kinh độ hiện tại của người dùng (Longitude)."
+                    },
+                    "keyword": {
+                    "type": "string",
+                    "description": "Từ khóa món ăn hoặc loại quán cần tìm (ví dụ: phở, sushi, pizza)."
+                    },
+                    "preference": {
+                    "type": "string",
+                    "enum": ["prominence", "distance"],
+                    "default": "prominence",
+                    "description": "Ưu tiên: 'prominence' để tìm quán ngon/nổi tiếng, 'distance' để tìm quán gần nhất."
+                    }
+                },
+                "required": ["lat", "lng", "keyword"]
                 },
             },
-        },
+            },
         {
             "type": "function",
             "function": {
