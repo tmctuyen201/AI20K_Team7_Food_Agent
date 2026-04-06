@@ -8,6 +8,8 @@ export interface User {
   lng: number;
 }
 
+// ── Places ──────────────────────────────────────────────────────────────────
+
 export interface Place {
   place_id: string;
   name: string;
@@ -16,12 +18,26 @@ export interface Place {
   address?: string;
   cuisine_type?: string;
   open_now?: boolean;
-  photo_ref?: string;
   score?: number;
 }
 
 export interface ScoredPlace extends Place {
   score: number;
+}
+
+// ── API responses ────────────────────────────────────────────────────────────
+
+export interface SessionResponse {
+  session_id: string;
+  user_id: string;
+  token: string;
+  expires_at: string;
+}
+
+export interface HistoryResponse {
+  selections: SavedSelection[];
+  total: number;
+  top_cuisines: CuisineStat[];
 }
 
 export interface SavedSelection {
@@ -32,9 +48,36 @@ export interface SavedSelection {
   selected_at: string;
 }
 
-// ── Agent state / API ─────────────────────────────────────────────────────────
+export interface CuisineStat {
+  cuisine: string;
+  count: number;
+  avg_rating: number;
+}
 
-export interface ToolCall {
+// ── WebSocket protocol ───────────────────────────────────────────────────────
+
+export interface WsTokenMessage {
+  type: 'token';
+  data: string;
+}
+
+export interface WsDoneMessage {
+  type: 'done';
+  data: {
+    places: ScoredPlace[];
+  };
+}
+
+export interface WsErrorMessage {
+  type: 'error';
+  message: string;
+}
+
+export type WsMessage = WsTokenMessage | WsDoneMessage | WsErrorMessage;
+
+// ── Agent UI state ──────────────────────────────────────────────────────────
+
+export interface ToolCallEntry {
   tool: string;
   args: Record<string, unknown>;
   result?: string;
@@ -45,24 +88,10 @@ export interface AgentTurn {
   role: 'user' | 'assistant';
   message: string;
   places?: ScoredPlace[];
-  toolCalls?: ToolCall[];
+  toolCalls?: ToolCallEntry[];
   timestamp: number;
 }
 
-export interface AgentState {
-  user_id: string;
-  session_id: string;
-  user_message: string;
-  final_response: string;
-  is_done: boolean;
-  places_scored?: ScoredPlace[];
-  tool_calls?: ToolCall[];
-}
-
-export interface ApiError {
-  detail: string;
-}
-
-// ── UI ────────────────────────────────────────────────────────────────────────
+// ── UI ───────────────────────────────────────────────────────────────────────
 
 export type ConnectionStatus = 'connecting' | 'connected' | 'disconnected' | 'error';
