@@ -8,10 +8,10 @@ cp .env.example .env
 # Edit .env and fill in your API keys
 
 # 2. Install dependencies
-pip install -e ".[dev]"
+pip install -r requirements.txt
 
 # 3. Run
-python -m app.main
+python -m main.py
 ```
 
 ## Structure
