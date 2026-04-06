@@ -35,7 +35,7 @@ def print_banner() -> None:
 def print_user_options() -> None:
     print("\n[Users mock — chọn user_id để bắt đầu]")
     for u in MOCK_USERS:
-        print(f"  {u['user_id']} — {u['name']} ({u['city']})")
+        print(f"  {u['user_id']} — {u['name']} ({u['address']})")
     print()
 
 
@@ -116,7 +116,7 @@ async def main() -> None:
     print_banner()
     print_user_options()
 
-    user_id = input("Chọn user_id (mặc định u01): ").strip() or "u01"
+    user_id = input("Chọn user_id (mặc định U001): ").strip() or "U001"
     session_id = f"sess_{uuid.uuid4().hex[:8]}"
 
     await run_chat(user_id, session_id)
