@@ -1,6 +1,20 @@
 import { useState, useCallback, useRef, useEffect } from "react";
-import type { AgentTurn, ConnectionStatus, ScoredPlace, ParsedPlace } from "../types";
-import { storageService, type StoredSelection } from "../services/storageService";
+import type {
+  AgentTurn,
+  AgentVersion,
+  ChatSession,
+  CompareResult,
+  ConnectionStatus,
+  ParsedPlace,
+  ReasoningStep,
+  ScoredPlace,
+  ToolResultEntry,
+  WsMessage,
+} from "../types";
+import {
+  storageService,
+  type StoredSelection,
+} from "../services/storageService";
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:8000";
 const RECONNECT_DELAY = 3000;
@@ -8,31 +22,40 @@ const RECONNECT_DELAY = 3000;
 /** Parse restaurant cards from plain-text LLM response */
 function parsePlacesFromText(text: string): ParsedPlace[] {
   const results: ParsedPlace[] = [];
-  // Split by blank-line-separated blocks
   const blocks = text.split(/\n\s*\n/);
 
   for (const block of blocks) {
-    const lines = block.trim().split('\n').map((l) => l.trim()).filter(Boolean);
+    const lines = block
+      .trim()
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean);
     if (lines.length < 2) continue;
 
-    // 1. Extract name — first non-empty line (may be bold/markdown)
-    const nameLine = lines[0].replace(/^#+\s*\*?\*?\d+[\.\)]\s*/i, '').replace(/\*\*/g, '').trim();
+    const nameLine = lines[0]
+      .replace(/^#+\s*\*?\*?\d+[\.\)]\s*/i, "")
+      .replace(/\*\*/g, "")
+      .trim();
     if (!nameLine) continue;
 
-    // 2. Extract rating — e.g. "Rating: 4.7/5" or "4.7/5 sao"
-    const ratingMatch = lines.join(' ').match(/(?:rating[:\s]*)?(\d+\.?\d*)\s*(?:\/\s*5\s*sao|sao|★|\/5)/i);
+    const ratingMatch = lines
+      .join(" ")
+      .match(/(?:rating[:\s]*)?(\d+\.?\d*)\s*(?:\/\s*5\s*sao|sao|★|\/5)/i);
     const rating = ratingMatch ? parseFloat(ratingMatch[1]) : 0;
 
-    // 3. Extract distance — e.g. "0.4 km", "0.9km", "Khoảng cách: 0.9 km"
-    const distMatch = lines.join(' ').match(/(?:khoảng\s*cách|distance)[:\s]*(\d+\.?\d*)\s*km/i)
-      || lines.join(' ').match(/(\d+\.?\d*)\s*km/);
+    const distMatch =
+      lines
+        .join(" ")
+        .match(/(?:khoảng\s*cách|distance)[:\s]*(\d+\.?\d*)\s*km/i) ||
+      lines.join(" ").match(/(\d+\.?\d*)\s*km/);
     const distance_km = distMatch ? parseFloat(distMatch[1]) : 0;
 
-    // 4. Description — remaining lines joined (skip rating/dist lines)
-    const descLines = lines.slice(1).filter(
-      (l) => !/(?:rating|khoảng\s*cách|distance|\d+\.?\d*\s*km)/i.test(l),
-    );
-    const description = descLines.join(' ').replace(/\*\*/g, '').trim();
+    const descLines = lines
+      .slice(1)
+      .filter(
+        (l) => !/(?:rating|khoảng\s*cách|distance|\d+\.?\d*\s*km)/i.test(l),
+      );
+    const description = descLines.join(" ").replace(/\*\*/g, "").trim();
 
     results.push({ name: nameLine, rating, distance_km, description });
   }
@@ -44,16 +67,6 @@ interface SessionInfo {
   session_id: string;
   user_id: string;
   token: string;
-}
-
-interface WsMessage {
-  type: string;
-  text?: string;
-  user_id?: string;
-  data?: unknown;
-  places?: ScoredPlace[];
-  message?: string;
-  detail?: string;
 }
 
 const MOCK_USERS = [
@@ -86,6 +99,23 @@ interface UseChatReturn {
   savedSelections: StoredSelection[];
   removeSavedSelection: (place_id: string) => void;
   clearSavedSelections: () => void;
+  selectedModel: string;
+  setSelectedModel: (model: string) => void;
+  selectedVersion: AgentVersion;
+  setSelectedVersion: (version: AgentVersion) => void;
+  isComparing: boolean;
+  setIsComparing: (comparing: boolean) => void;
+  compareResult: CompareResult | null;
+  setCompareResult: (result: CompareResult | null) => void;
+  showSidebar: boolean;
+  setShowSidebar: (show: boolean) => void;
+  chatSessions: ChatSession[];
+  setChatSessions: React.Dispatch<React.SetStateAction<ChatSession[]>>;
+  currentSessionId: string;
+  setCurrentSessionId: (id: string) => void;
+  createNewChat: () => void;
+  loadChatSession: (id: string) => void;
+  deleteChatSession: (id: string) => void;
 }
 
 export function useChat(): UseChatReturn {
@@ -96,21 +126,30 @@ export function useChat(): UseChatReturn {
   const [sessionInfo, setSessionInfo] = useState<SessionInfo | null>(null);
   const [savedSelections, setSavedSelections] = useState<StoredSelection[]>([]);
 
+  // ── New state for sidebar, versioning, and comparison ───────────────────────
+  const [selectedModel, setSelectedModel] = useState("gpt-4o-mini");
+  const [selectedVersion, setSelectedVersion] = useState<AgentVersion>("v2");
+  const [isComparing, setIsComparing] = useState(false);
+  const [compareResult, setCompareResult] = useState<CompareResult | null>(
+    null,
+  );
+  const [showSidebar, setShowSidebar] = useState(true);
+  const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
+  const [currentSessionId, setCurrentSessionId] = useState("");
+
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const userIdRef = useRef(selectedUserId);
   const sessionIdRef = useRef("");
 
-  // Keep refs in sync with state
   useEffect(() => {
     userIdRef.current = selectedUserId;
   }, [selectedUserId]);
 
-  // ── Step 1: Create session → get JWT (auto on mount) ───────────────────────
+  // ── Step 1: Create session → get JWT (auto on mount) ────────────────────────
 
   const createSession = useCallback(
     async (user_id: string): Promise<SessionInfo> => {
-      // Use GET /api/session — auto-creates session without body
       const res = await fetch(
         `${BACKEND_URL}/api/session?user_id=${encodeURIComponent(user_id)}`,
         { method: "GET" },
@@ -186,28 +225,32 @@ export function useChat(): UseChatReturn {
         }
 
         if (msg.type === "token") {
-          // Streaming token — accumulate in last assistant turn
-          // and try to parse restaurant cards from accumulated text
+          const tokenData = (msg as WsMessage & { data: string }).data;
           setTurns((prev) => {
             const last = prev[prev.length - 1];
-            const newMessage = last?.role === "assistant"
-              ? last.message + (msg.data as string)
-              : (msg.data as string);
+            const newMessage =
+              last?.role === "assistant" ? last.message + tokenData : tokenData;
 
             const parsed = parsePlacesFromText(newMessage);
 
             if (last?.role === "assistant") {
               return [
                 ...prev.slice(0, -1),
-                { ...last, message: newMessage, parsedPlaces: parsed.length ? parsed : last.parsedPlaces },
+                {
+                  ...last,
+                  message: newMessage,
+                  parsedPlaces: parsed.length ? parsed : last.parsedPlaces,
+                },
               ];
             }
             return prev;
           });
         } else if (msg.type === "done") {
-          const places: ScoredPlace[] = ((
-            msg as unknown as { data?: { places?: ScoredPlace[] } }
-          ).data?.places ?? []) as ScoredPlace[];
+          const doneMsg = msg as WsMessage & {
+            data?: { places?: ScoredPlace[] };
+          };
+          const places: ScoredPlace[] = (doneMsg.data?.places ??
+            []) as ScoredPlace[];
           setLastPlaces(places);
 
           setTurns((prev) => {
@@ -215,10 +258,19 @@ export function useChat(): UseChatReturn {
             if (last?.role === "assistant") {
               return [
                 ...prev.slice(0, -1),
-                { ...last, places, timestamp: Date.now() },
+                {
+                  ...last,
+                  message: last.message,
+                  places,
+                  timestamp: Date.now(),
+                },
               ];
             }
-            return prev;
+            // No assistant turn yet — create one (handles v2 non-food path)
+            return [
+              ...prev,
+              { role: "assistant", message: "", places, timestamp: Date.now() },
+            ];
           });
         } else if (msg.type === "error") {
           const errMsg =
@@ -233,14 +285,17 @@ export function useChat(): UseChatReturn {
             },
           ]);
           setStatus("error");
-        } else if (msg.type === "success") {
-          // select_place confirmed — show as assistant message, no places
+        } else if ((msg as { type: string }).type === "success") {
           const successMsg =
-            (msg as WsMessage & { message?: string }).message || "Đã lưu lựa chọn!";
+            (msg as WsMessage & { message?: string }).message ||
+            "Đã lưu lựa chọn!";
           setTurns((prev) => {
             const last = prev[prev.length - 1];
             if (last?.role === "assistant" && !last.message) {
-              return [...prev.slice(0, -1), { ...last, message: successMsg, timestamp: Date.now() }];
+              return [
+                ...prev.slice(0, -1),
+                { ...last, message: successMsg, timestamp: Date.now() },
+              ];
             }
             return [
               ...prev,
@@ -248,6 +303,60 @@ export function useChat(): UseChatReturn {
             ];
           });
           setLastPlaces([]);
+        } else if (msg.type === "reasoning") {
+          const rm = msg as WsMessage & {
+            step: number;
+            text: string;
+            tool: string | null;
+          };
+          setTurns((prev) => {
+            const last = prev[prev.length - 1];
+            if (last?.role === "assistant") {
+              const reasoningStep: ReasoningStep = {
+                step: rm.step,
+                text: rm.text,
+                tool: rm.tool,
+              };
+              return [
+                ...prev.slice(0, -1),
+                {
+                  ...last,
+                  reasoningSteps: [
+                    ...(last.reasoningSteps || []),
+                    reasoningStep,
+                  ],
+                },
+              ];
+            }
+            return prev;
+          });
+        } else if (msg.type === "tool_result") {
+          const tr = msg as WsMessage & {
+            tool: string;
+            result: unknown;
+            error: string | null;
+          };
+          setTurns((prev) => {
+            const last = prev[prev.length - 1];
+            if (last?.role === "assistant") {
+              const toolEntry: ToolResultEntry = {
+                tool: tr.tool,
+                result: tr.result,
+                error: tr.error,
+              };
+              return [
+                ...prev.slice(0, -1),
+                {
+                  ...last,
+                  toolResults: [...(last.toolResults || []), toolEntry],
+                },
+              ];
+            }
+            return prev;
+          });
+        } else if (msg.type === "compare_result") {
+          const cr = msg as WsMessage & { versions: CompareResult };
+          setCompareResult(cr.versions);
         }
       };
 
@@ -272,7 +381,6 @@ export function useChat(): UseChatReturn {
 
   const sendMessage = useCallback(
     async (text: string) => {
-      // Append user turn immediately
       const userTurn: AgentTurn = {
         role: "user",
         message: text,
@@ -280,14 +388,17 @@ export function useChat(): UseChatReturn {
       };
       setTurns((prev) => [...prev, userTurn]);
 
-      // Start assistant turn with parsed places ready
       const parsed = parsePlacesFromText("");
       setTurns((prev) => [
         ...prev,
-        { role: "assistant", message: "", timestamp: Date.now(), parsedPlaces: parsed },
+        {
+          role: "assistant",
+          message: "",
+          timestamp: Date.now(),
+          parsedPlaces: parsed,
+        },
       ]);
 
-      // Ensure WebSocket is connected
       let currentSession = sessionInfo;
       const ws = wsRef.current;
       if (!ws || ws.readyState !== WebSocket.OPEN) {
@@ -309,19 +420,39 @@ export function useChat(): UseChatReturn {
           return;
         }
         // connectWs set wsRef.current — re-read after awaiting
-        wsRef.current?.send(JSON.stringify({ text }));
+        wsRef.current?.send(
+          JSON.stringify({
+            text,
+            model: selectedModel || undefined,
+            version: selectedVersion,
+            compare: isComparing,
+          }),
+        );
       } else {
-        ws.send(JSON.stringify({ text }));
+        ws.send(
+          JSON.stringify({
+            text,
+            model: selectedModel || undefined,
+            version: selectedVersion,
+            compare: isComparing,
+          }),
+        );
       }
     },
-    [sessionInfo, createSession, connectWs],
+    [
+      sessionInfo,
+      createSession,
+      connectWs,
+      selectedModel,
+      selectedVersion,
+      isComparing,
+    ],
   );
 
   // ── Switch user → new session ───────────────────────────────────────────────
 
   const handleSetUserId = useCallback(
     async (newId: string) => {
-      // Close existing WS
       if (wsRef.current) {
         wsRef.current.close();
         wsRef.current = null;
@@ -332,8 +463,8 @@ export function useChat(): UseChatReturn {
       setLastPlaces([]);
       setSessionInfo(null);
       setStatus("disconnected");
+      setCompareResult(null);
 
-      // Create new session + reconnect WS for the new user
       try {
         const session = await createSession(newId);
         sessionIdRef.current = session.session_id;
@@ -347,31 +478,28 @@ export function useChat(): UseChatReturn {
     [createSession, connectWs],
   );
 
-  // ── Select place → send select_place via WebSocket ─────────────────────────
+  // ── Select place → send select_place via WebSocket ──────────────────────────
 
-  const selectPlace = useCallback(
-    async (place: ScoredPlace) => {
-      const user_id = userIdRef.current;
+  const selectPlace = useCallback(async (place: ScoredPlace) => {
+    const user_id = userIdRef.current;
 
-      // 1. Save to localStorage immediately
-      const updated = storageService.save(place, user_id);
-      setSavedSelections(updated);
+    // 1. Save to localStorage immediately
+    const updated = storageService.save(place, user_id);
+    setSavedSelections(updated);
 
-      // 2. Send select_place via WebSocket (backend calls save_user_selection)
-      if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
-        console.warn("[useChat] WebSocket not open, cannot select place");
-        return;
-      }
+    // 2. Send select_place via WebSocket
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+      console.warn("[useChat] WebSocket not open, cannot select place");
+      return;
+    }
 
-      wsRef.current.send(JSON.stringify({ type: "select_place", place }));
+    wsRef.current.send(JSON.stringify({ type: "select_place", place }));
 
-      // 3. Clear lastPlaces so old food cards disappear after selection
-      setLastPlaces([]);
-    },
-    [],
-  );
+    // 3. Clear lastPlaces so old food cards disappear after selection
+    setLastPlaces([]);
+  }, []);
 
-  // ── Saved selections helpers ──────────────────────────────────────────────────
+  // ── Saved selections helpers ────────────────────────────────────────────────
 
   const removeSavedSelection = useCallback((place_id: string) => {
     const updated = storageService.remove(place_id, userIdRef.current);
@@ -394,7 +522,89 @@ export function useChat(): UseChatReturn {
     setLastPlaces([]);
     setSessionInfo(null);
     setStatus("disconnected");
+    setCompareResult(null);
     // Keep savedSelections — they persist across resets
+  }, []);
+
+  // ── Chat session management ──────────────────────────────────────────────────
+
+  const createNewChat = useCallback(() => {
+    if (wsRef.current) {
+      wsRef.current.close();
+      wsRef.current = null;
+    }
+    const newId = `sess_${Date.now()}`;
+    const newSession: ChatSession = {
+      id: newId,
+      user_id: selectedUserId,
+      model: selectedModel,
+      version: selectedVersion,
+      title: "",
+      preview: "",
+      turns: [],
+      created_at: Date.now(),
+      updated_at: Date.now(),
+    };
+    setChatSessions((prev) => [newSession, ...prev].slice(0, 50));
+    setCurrentSessionId(newId);
+    setTurns([]);
+    setLastPlaces([]);
+    setSessionInfo(null);
+    setStatus("disconnected");
+    setCompareResult(null);
+  }, [selectedUserId, selectedModel, selectedVersion]);
+
+  const loadChatSession = useCallback(
+    (id: string) => {
+      const session = chatSessions.find((s) => s.id === id);
+      if (!session) return;
+      setCurrentSessionId(id);
+      setTurns(session.turns);
+      setCompareResult(null);
+    },
+    [chatSessions],
+  );
+
+  const deleteChatSession = useCallback(
+    (id: string) => {
+      setChatSessions((prev) => prev.filter((s) => s.id !== id));
+      if (currentSessionId === id) {
+        if (wsRef.current) {
+          wsRef.current.close();
+          wsRef.current = null;
+        }
+        setTurns([]);
+        setCurrentSessionId("");
+        setStatus("disconnected");
+        setCompareResult(null);
+      }
+    },
+    [currentSessionId],
+  );
+
+  // ── Persist sessions to localStorage ────────────────────────────────────────
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        "foodie_chat_sessions",
+        JSON.stringify(chatSessions),
+      );
+    } catch {
+      /* ignore quota errors */
+    }
+  }, [chatSessions]);
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem("foodie_chat_sessions");
+      if (stored) {
+        setChatSessions(JSON.parse(stored) as ChatSession[]);
+      }
+    } catch {
+      /* ignore corrupt storage */
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ── Cleanup on unmount ──────────────────────────────────────────────────────
@@ -420,5 +630,22 @@ export function useChat(): UseChatReturn {
     savedSelections,
     removeSavedSelection,
     clearSavedSelections,
+    selectedModel,
+    setSelectedModel,
+    selectedVersion,
+    setSelectedVersion,
+    isComparing,
+    setIsComparing,
+    compareResult,
+    setCompareResult,
+    showSidebar,
+    setShowSidebar,
+    chatSessions,
+    setChatSessions,
+    currentSessionId,
+    setCurrentSessionId,
+    createNewChat,
+    loadChatSession,
+    deleteChatSession,
   };
 }
