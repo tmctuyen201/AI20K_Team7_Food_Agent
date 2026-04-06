@@ -18,13 +18,24 @@ def get_tool_definitions() -> list[dict]:
             "function": {
                 "name": "get_user_location",
                 "description": "Get the current latitude and longitude for a user. "
-                               "Returns location data including lat, lng, and city name.",
+                               "Returns location data including lat, lng, and city name. "
+                               "If GPS headers are unavailable and no address is provided, "
+                               "returns mock data for a sample user.",
                 "parameters": {
                     "type": "object",
                     "properties": {
                         "user_id": {
                             "type": "string",
                             "description": "Unique user identifier",
+                        },
+                        "address": {
+                            "type": "string",
+                            "description": (
+                                "Optional. Text address to geocode (e.g. "
+                                "'123 Lê Lợi, Hoàn Kiếm, Hà Nội'). "
+                                "If provided, the address is converted to lat/lng "
+                                "via the Geocoding API instead of using mock data."
+                            ),
                         },
                     },
                     "required": ["user_id"],
@@ -97,7 +108,11 @@ def get_tool_definitions() -> list[dict]:
             "type": "function",
             "function": {
                 "name": "save_user_selection",
-                "description": "Save a restaurant selection to user's history.",
+                "description": (
+                    "Save a restaurant selection when user chooses a restaurant. "
+                    "Stores selection in history and updates user preferences. "
+                    "Required: user_id, place_id, name. Optional: cuisine_type, rating."
+                ),
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -107,14 +122,24 @@ def get_tool_definitions() -> list[dict]:
                         },
                         "place_id": {
                             "type": "string",
-                            "description": "Google place ID of the selected restaurant",
+                            "description": "Google Places ID of the restaurant",
                         },
-                        "place": {
-                            "type": "object",
-                            "description": "Full place object to save",
+                        "name": {
+                            "type": "string",
+                            "description": "Restaurant name (must be a real place from Google)",
+                        },
+                        "cuisine_type": {
+                            "type": "string",
+                            "description": "Type of cuisine (e.g. 'phở', 'bún bò', 'cơm tấm')",
+                        },
+                        "rating": {
+                            "type": "number",
+                            "description": "Rating from 0.0 to 5.0",
+                            "minimum": 0.0,
+                            "maximum": 5.0,
                         },
                     },
-                    "required": ["user_id", "place"],
+                    "required": ["user_id", "place_id", "name"],
                 },
             },
         },
