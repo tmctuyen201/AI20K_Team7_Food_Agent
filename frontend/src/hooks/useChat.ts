@@ -163,18 +163,27 @@ export function useChat(): UseChatReturn {
   // ── Fetch all backend sessions for a user ───────────────────────────────────
 
   const fetchUserSessions = useCallback(
-    async (user_id: string): Promise<Array<{ session_id: string; created_at: string; user_id: string }>> => {
+    async (
+      user_id: string,
+    ): Promise<
+      Array<{ session_id: string; created_at: string; user_id: string }>
+    > => {
       try {
-        const res = await fetch(`${BACKEND_URL}/api/sessions/${encodeURIComponent(user_id)}`);
+        const res = await fetch(
+          `${BACKEND_URL}/api/sessions/${encodeURIComponent(user_id)}`,
+        );
         if (!res.ok) {
-          console.error(`Failed to fetch sessions for user ${user_id}:`, res.status);
+          console.error(
+            `Failed to fetch sessions for user ${user_id}:`,
+            res.status,
+          );
           return [];
         }
         const data = await res.json();
-        console.log('Fetched backend sessions:', data);
+        console.log("Fetched backend sessions:", data);
         return data;
       } catch (error) {
-        console.error('Error fetching user sessions:', error);
+        console.error("Error fetching user sessions:", error);
         return [];
       }
     },
@@ -183,43 +192,45 @@ export function useChat(): UseChatReturn {
 
   // ── Fetch chat history ──────────────────────────────────────────────────────
 
-  const fetchChatHistory = useCallback(
-    async (sessionId: string) => {
-      if (!sessionId) return;
+  const fetchChatHistory = useCallback(async (sessionId: string) => {
+    if (!sessionId) return;
 
-      setChatHistoryLoading(true);
-      setChatHistoryError(null);
+    setChatHistoryLoading(true);
+    setChatHistoryError(null);
 
-      try {
-        const response = await fetch(
-          `${BACKEND_URL}/api/session/${sessionId}/history`,
-        );
+    try {
+      const response = await fetch(
+        `${BACKEND_URL}/api/session/${sessionId}/history`,
+      );
 
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-
-        const data: ChatHistoryResponse = await response.json();
-
-        // Convert backend format to frontend format if needed
-        const formattedMessages: ChatHistoryMessage[] = data.messages.map(msg => ({
-          timestamp: msg.timestamp,
-          role: msg.role as 'user' | 'assistant',
-          content: msg.content,
-        }));
-
-        setChatHistory(formattedMessages);
-        console.log(`Loaded ${formattedMessages.length} messages for session ${sessionId}`);
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : "Unknown error";
-        setChatHistoryError(errorMessage);
-        console.error("[useChat] Failed to fetch chat history:", error);
-      } finally {
-        setChatHistoryLoading(false);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
-    },
-    [],
-  );
+
+      const data: ChatHistoryResponse = await response.json();
+
+      // Convert backend format to frontend format if needed
+      const formattedMessages: ChatHistoryMessage[] = data.messages.map(
+        (msg) => ({
+          timestamp: msg.timestamp,
+          role: msg.role as "user" | "assistant",
+          content: msg.content,
+        }),
+      );
+
+      setChatHistory(formattedMessages);
+      console.log(
+        `Loaded ${formattedMessages.length} messages for session ${sessionId}`,
+      );
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
+      setChatHistoryError(errorMessage);
+      console.error("[useChat] Failed to fetch chat history:", error);
+    } finally {
+      setChatHistoryLoading(false);
+    }
+  }, []);
 
   // ── Step 1: Create session → get JWT (auto on mount) ────────────────────────
 
@@ -257,17 +268,19 @@ export function useChat(): UseChatReturn {
         if (!mounted) return;
 
         // 2. Convert backend sessions to ChatSession format for sidebar
-        const chatSessionsFromBackend: ChatSession[] = backendSessions.map((s) => ({
-          id: s.session_id,
-          user_id: selectedUserId,
-          model: selectedModel,
-          version: selectedVersion,
-          title: `Session ${s.session_id.slice(-8)}`,
-          preview: "",
-          turns: [],
-          created_at: new Date(s.created_at).getTime(),
-          updated_at: new Date(s.created_at).getTime(),
-        }));
+        const chatSessionsFromBackend: ChatSession[] = backendSessions.map(
+          (s) => ({
+            id: s.session_id,
+            user_id: selectedUserId,
+            model: selectedModel,
+            version: selectedVersion,
+            title: `Session ${s.session_id.slice(-8)}`,
+            preview: "",
+            turns: [],
+            created_at: new Date(s.created_at).getTime(),
+            updated_at: new Date(s.created_at).getTime(),
+          }),
+        );
 
         setChatSessions(chatSessionsFromBackend);
 
@@ -557,7 +570,9 @@ export function useChat(): UseChatReturn {
           }),
         );
       } else {
-        console.log(`Sending message via EXISTING WebSocket connection: "${text}"`);
+        console.log(
+          `Sending message via EXISTING WebSocket connection: "${text}"`,
+        );
         ws.send(
           JSON.stringify({
             text,
@@ -571,17 +586,28 @@ export function useChat(): UseChatReturn {
       // Refresh chat history after sending message
       if (sessionIdRef.current) {
         // Update the current session's preview with the last message
-        setChatSessions(prev =>
-          prev.map(s =>
+        setChatSessions((prev) =>
+          prev.map((s) =>
             s.id === sessionIdRef.current
-              ? { ...s, preview: text.length > 50 ? text.substring(0, 50) + "..." : text, updated_at: Date.now() }
-              : s
-          )
+              ? {
+                  ...s,
+                  preview:
+                    text.length > 50 ? text.substring(0, 50) + "..." : text,
+                  updated_at: Date.now(),
+                }
+              : s,
+          ),
         );
       }
-
     },
-    [sessionInfo, createSession, connectWs, selectedModel, selectedVersion, isComparing],
+    [
+      sessionInfo,
+      createSession,
+      connectWs,
+      selectedModel,
+      selectedVersion,
+      isComparing,
+    ],
   );
 
   // ── Switch user → new session ───────────────────────────────────────────────
@@ -606,17 +632,19 @@ export function useChat(): UseChatReturn {
         const backendSessions = await fetchUserSessions(newId);
 
         // Convert to ChatSession format
-        const chatSessionsFromBackend: ChatSession[] = backendSessions.map((s) => ({
-          id: s.session_id,
-          user_id: newId,
-          model: selectedModel,
-          version: selectedVersion,
-          title: `Session ${s.session_id.slice(-6)}`,
-          preview: "",
-          turns: [],
-          created_at: new Date(s.created_at).getTime(),
-          updated_at: new Date(s.created_at).getTime(),
-        }));
+        const chatSessionsFromBackend: ChatSession[] = backendSessions.map(
+          (s) => ({
+            id: s.session_id,
+            user_id: newId,
+            model: selectedModel,
+            version: selectedVersion,
+            title: `Session ${s.session_id.slice(-6)}`,
+            preview: "",
+            turns: [],
+            created_at: new Date(s.created_at).getTime(),
+            updated_at: new Date(s.created_at).getTime(),
+          }),
+        );
 
         // Create a new session for the current visit
         const session = await createSession(newId);
@@ -645,7 +673,14 @@ export function useChat(): UseChatReturn {
         setStatus("error");
       }
     },
-    [createSession, connectWs, fetchChatHistory, fetchUserSessions, selectedModel, selectedVersion],
+    [
+      createSession,
+      connectWs,
+      fetchChatHistory,
+      fetchUserSessions,
+      selectedModel,
+      selectedVersion,
+    ],
   );
 
   // ── Select place → send select_place via WebSocket ──────────────────────────
@@ -738,7 +773,13 @@ export function useChat(): UseChatReturn {
       console.error("[useChat] createNewChat failed:", err);
       setStatus("error");
     }
-  }, [selectedUserId, selectedModel, selectedVersion, createSession, connectWs]);
+  }, [
+    selectedUserId,
+    selectedModel,
+    selectedVersion,
+    createSession,
+    connectWs,
+  ]);
 
   const loadChatSession = useCallback(
     async (id: string) => {
@@ -757,25 +798,34 @@ export function useChat(): UseChatReturn {
 
       // Also load the messages into the main chat window
       try {
-        const response = await fetch(`${BACKEND_URL}/api/session/${id}/history`);
+        const response = await fetch(
+          `${BACKEND_URL}/api/session/${id}/history`,
+        );
         if (response.ok) {
           const data: ChatHistoryResponse = await response.json();
 
           // Convert chat history messages to AgentTurn format for main chat
-          const turnsFromHistory: AgentTurn[] = data.messages.map((msg, index) => ({
-            role: msg.role as 'user' | 'assistant',
-            message: msg.content,
-            timestamp: new Date(msg.timestamp).getTime(),
-            // Add basic properties, places and other fields will be empty for historical messages
-            places: [],
-            parsedPlaces: [],
-          }));
+          const turnsFromHistory: AgentTurn[] = data.messages.map(
+            (msg, index) => ({
+              role: msg.role as "user" | "assistant",
+              message: msg.content,
+              timestamp: new Date(msg.timestamp).getTime(),
+              // Add basic properties, places and other fields will be empty for historical messages
+              places: [],
+              parsedPlaces: [],
+            }),
+          );
 
           setTurns(turnsFromHistory);
-          console.log(`Loaded ${turnsFromHistory.length} turns into main chat for session ${id}`);
+          console.log(
+            `Loaded ${turnsFromHistory.length} turns into main chat for session ${id}`,
+          );
         }
       } catch (error) {
-        console.error(`Failed to load chat history into main chat for session ${id}:`, error);
+        console.error(
+          `Failed to load chat history into main chat for session ${id}:`,
+          error,
+        );
       }
     },
     [chatSessions],
@@ -802,8 +852,6 @@ export function useChat(): UseChatReturn {
     },
     [currentSessionId],
   );
-
-
 
   // ── Cleanup on unmount ──────────────────────────────────────────────────────
 

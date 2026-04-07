@@ -66,7 +66,8 @@ class ReActAgent:
                 "llm_messages_payload",
                 message_count=len(messages),
                 messages_preview=[
-                    {k: (v[:200] if isinstance(v, str) else v) for k, v in m.items()}
+                    {k: (v[:200] if isinstance(v, str) else v)
+                     for k, v in m.items()}
                     for m in messages
                 ],
             )
@@ -82,7 +83,7 @@ class ReActAgent:
                 final_text = self._extract_text(response)
                 state["final_response"] = final_text
                 state["is_done"] = True
-                
+
                 # Log the final assistant response
                 log_agent_step(
                     get_agent_step_logger(state.get("session_id", "unknown")),
@@ -94,13 +95,14 @@ class ReActAgent:
                     session_id=state.get("session_id", "unknown"),
                     message=f"[Final Response] {final_text[:500]}",
                 )
-                
+
                 agent_logger.warning(
                     "agent_run_done_no_tool",
                     user_id=state.get("user_id"),
                     iteration=iteration,
                     has_tools=bool(self.tools),
-                    final_response_preview=final_text[:300] if final_text else "(empty)",
+                    final_response_preview=final_text[:
+                                                      300] if final_text else "(empty)",
                     tools=[t["function"]["name"] for t in self.tools],
                 )
                 break
@@ -415,7 +417,8 @@ class ReActAgent:
                 "llm_call_completed",
                 elapsed_ms=round(elapsed_ms, 1),
                 has_tool_calls=bool(tool_calls),
-                tool_names=[tc["name"] for tc in tool_calls] if tool_calls else None,
+                tool_names=[tc["name"]
+                            for tc in tool_calls] if tool_calls else None,
                 response_text_preview=(
                     self._extract_text(response)[:500]
                     if not tool_calls else None
@@ -424,7 +427,8 @@ class ReActAgent:
                 system_prompt_preview=messages[0]["content"][:300] if messages else "",
                 user_message=messages[-1]["content"] if messages else "",
                 tool_count=len(self.tools),
-                tool_names_available=[t["function"]["name"] for t in self.tools],
+                tool_names_available=[t["function"]["name"]
+                                      for t in self.tools],
             )
             return response
 
@@ -507,7 +511,8 @@ class ReActAgent:
         try:
             # Parse arguments
             import json
-            args = json.loads(raw_args) if isinstance(raw_args, str) else raw_args
+            args = json.loads(raw_args) if isinstance(
+                raw_args, str) else raw_args
 
             # Route to the appropriate tool handler
             result = await self._route_tool(tool_name, args, state)

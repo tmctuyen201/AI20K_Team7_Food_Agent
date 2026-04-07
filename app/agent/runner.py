@@ -262,8 +262,10 @@ class AgentRunner:
         async for ev in react_agent.run_streaming(
             state, self.user_id, self.session_id, model
         ):
-            reasoning_events.append(ev) if ev.get("type") == "reasoning" else None
-            tool_result_events.append(ev) if ev.get("type") == "tool_result" else None
+            reasoning_events.append(ev) if ev.get(
+                "type") == "reasoning" else None
+            tool_result_events.append(ev) if ev.get(
+                "type") == "tool_result" else None
             yield ev
 
         # ── Backup guardrail check after ReAct loop ───────────────────────────
@@ -295,7 +297,8 @@ class AgentRunner:
         if state.get("scored_places"):
             scored_places = state["scored_places"]
         elif state.get("places_scored"):
-            scored_places = [ScoredPlace(**p) for p in state["places_scored"][:5]]
+            scored_places = [ScoredPlace(**p)
+                             for p in state["places_scored"][:5]]
 
         self._final_places = scored_places
         places_context = self._build_places_context(scored_places)
@@ -539,7 +542,8 @@ class AgentRunner:
             return
 
         # Extract scored places
-        scored_places: list[ScoredPlace] = result_state.get("scored_places") or []
+        scored_places: list[ScoredPlace] = result_state.get(
+            "scored_places") or []
 
         # ── Check if guardrail was triggered ─────────────────────────────────
         if result_state.get("guardrail_triggered"):
@@ -564,7 +568,8 @@ class AgentRunner:
             agent_logger.debug("node_log", node_message=msg)
 
         intent = result_state.get("intent")
-        scored_places: list[ScoredPlace] = result_state.get("scored_places") or []
+        scored_places: list[ScoredPlace] = result_state.get(
+            "scored_places") or []
 
         self._final_places = scored_places
 

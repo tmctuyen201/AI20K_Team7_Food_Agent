@@ -108,8 +108,10 @@ async def create_session(request: CreateSessionRequest) -> CreateSessionResponse
 async def get_or_create_session(
     user_id: str = Query(..., min_length=1, description="User identifier"),
     name: str = Query(default="", description="User display name"),
-    latitude: float = Query(default=21.0285, description="Latitude for session"),
-    longitude: float = Query(default=105.8542, description="Longitude for session"),
+    latitude: float = Query(
+        default=21.0285, description="Latitude for session"),
+    longitude: float = Query(
+        default=105.8542, description="Longitude for session"),
 ) -> CreateSessionResponse:
     """Auto-create a session for a user on first website access.
 

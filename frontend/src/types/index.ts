@@ -42,7 +42,7 @@ export interface HistoryResponse {
 
 export interface ChatHistoryMessage {
   timestamp: string;
-  role: 'user' | 'assistant';
+  role: "user" | "assistant";
   content: string;
 }
 
@@ -101,38 +101,38 @@ export interface CompareResult {
 // ── WebSocket protocol ───────────────────────────────────────────────────────
 
 export interface WsTokenMessage {
-  type: 'token';
+  type: "token";
   data: string;
 }
 
 export interface WsDoneMessage {
-  type: 'done';
+  type: "done";
   data: {
     places: ScoredPlace[];
   };
 }
 
 export interface WsErrorMessage {
-  type: 'error';
+  type: "error";
   message: string;
 }
 
 export interface WsReasoningMessage {
-  type: 'reasoning';
+  type: "reasoning";
   step: number;
   text: string;
   tool: string | null;
 }
 
 export interface WsToolResultMessage {
-  type: 'tool_result';
+  type: "tool_result";
   tool: string;
   result: unknown;
   error: string | null;
 }
 
 export interface WsCompareResultMessage {
-  type: 'compare_result';
+  type: "compare_result";
   versions: CompareResult;
 }
 
@@ -164,13 +164,13 @@ export interface ToolCallEntry {
 }
 
 export interface AgentTurn {
-  role: 'user' | 'assistant';
+  role: "user" | "assistant";
   message: string;
-  places?: ScoredPlace[];              // from WebSocket "done" payload
-  parsedPlaces?: ParsedPlace[];        // extracted from assistant text
+  places?: ScoredPlace[]; // from WebSocket "done" payload
+  parsedPlaces?: ParsedPlace[]; // extracted from assistant text
   toolCalls?: ToolCallEntry[];
-  reasoningSteps?: ReasoningStep[];    // streaming reasoning steps
-  toolResults?: ToolResultEntry[];     // tool call results
+  reasoningSteps?: ReasoningStep[]; // streaming reasoning steps
+  toolResults?: ToolResultEntry[]; // tool call results
   timestamp: number;
 }
 
@@ -181,8 +181,8 @@ export interface ChatSession {
   user_id: string;
   model: string;
   version: AgentVersion;
-  title: string;        // first message, truncated
-  preview: string;      // last assistant message, truncated
+  title: string; // first message, truncated
+  preview: string; // last assistant message, truncated
   turns: AgentTurn[];
   created_at: number;
   updated_at: number;
@@ -190,4 +190,8 @@ export interface ChatSession {
 
 // ── UI ───────────────────────────────────────────────────────────────────────
 
-export type ConnectionStatus = 'connecting' | 'connected' | 'disconnected' | 'error';
+export type ConnectionStatus =
+  | "connecting"
+  | "connected"
+  | "disconnected"
+  | "error";
