@@ -17,6 +17,7 @@ _DATA_DIR.mkdir(exist_ok=True)
 _USERS_FILE = _DATA_DIR / "users.json"
 _SESSIONS_FILE = _DATA_DIR / "sessions.json"
 _SELECTIONS_FILE = _DATA_DIR / "selections.json"
+_CHAT_HISTORY_FILE = _DATA_DIR / "chat_history.json"
 
 
 class _JSONStore:
@@ -75,6 +76,7 @@ class _JSONStore:
 users_store = _JSONStore(_USERS_FILE)
 sessions_store = _JSONStore(_SESSIONS_FILE)
 selections_store = _JSONStore(_SELECTIONS_FILE)
+chat_history_store = _JSONStore(_CHAT_HISTORY_FILE)
 
 
 async def connect_db() -> None:
@@ -93,4 +95,5 @@ def get_db() -> dict[str, _JSONStore]:
         "users": users_store,
         "sessions": sessions_store,
         "selections": selections_store,
+        "chat_history": chat_history_store,
     }

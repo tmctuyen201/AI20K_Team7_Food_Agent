@@ -40,6 +40,17 @@ export interface HistoryResponse {
   top_cuisines: CuisineStat[];
 }
 
+export interface ChatHistoryMessage {
+  timestamp: string;
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+export interface ChatHistoryResponse {
+  session_id: string;
+  messages: ChatHistoryMessage[];
+}
+
 export interface SavedSelection {
   place_id: string;
   name: string;

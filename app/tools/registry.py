@@ -9,12 +9,14 @@ from app.tools.location_tool import location_tool
 from app.tools.google_search_tool import google_search_tool
 from app.tools.scoring_tool import scoring_tool
 from app.tools.memory_tool import memory_tool
+from app.tools.preference_tool import preference_tool
 
 TOOLS: dict[str, BaseTool] = {
     "get_user_location": location_tool,
     "search_google_places": google_search_tool,
     "calculate_scores": scoring_tool,
     "save_user_selection": memory_tool,
+    "get_user_preference": preference_tool,
 }
 
 

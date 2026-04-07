@@ -6,7 +6,7 @@
       "name": "Hà Phở Bò",
       "cuisine_type": "phở",
       "rating": 4.8,
-      "selected_at": "2026-04-06T11:01:54.733461"
+      "selected_at": "2026-04-07T03:31:46.095076"
     },
     {
       "user_id": "u01",
@@ -22,7 +22,7 @@
       "name": "Phở bò Cô Hoa",
       "cuisine_type": "phở",
       "rating": 4.8,
-      "selected_at": "2026-04-06T14:23:50.169696"
+      "selected_at": "2026-04-07T05:07:43.534682"
     },
     {
       "user_id": "u01",
@@ -63,6 +63,14 @@
       "cuisine_type": "phở",
       "rating": 4.7,
       "selected_at": "2026-04-06T14:22:51.113954"
+    },
+    {
+      "user_id": "u01",
+      "place_id": "ChIJ-wIdRDGrNTERyYAHUg7awN8",
+      "name": "Quán Yên Vui Đống Đa - Hà nội",
+      "cuisine_type": "quán",
+      "rating": 5.0,
+      "selected_at": "2026-04-07T05:29:46.398814"
     }
   ]
 }

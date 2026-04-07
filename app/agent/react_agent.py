@@ -9,7 +9,7 @@ from typing import Any, AsyncIterator
 from app.agent.prompt import build_system_prompt, build_guardrail_prompt
 from app.agent.state import AgentState, ToolCall
 from app.core.guardrail import check_guardrails
-from app.core.logging import get_agent_logger, get_llm_logger, get_tool_logger, log_tool_call, log_tool_result, log_agent_step
+from app.core.logging import get_agent_logger, get_llm_logger, get_tool_logger, get_agent_step_logger, log_tool_call, log_tool_result, log_agent_step
 
 agent_logger = get_agent_logger()
 llm_logger = get_llm_logger()
@@ -82,6 +82,19 @@ class ReActAgent:
                 final_text = self._extract_text(response)
                 state["final_response"] = final_text
                 state["is_done"] = True
+                
+                # Log the final assistant response
+                log_agent_step(
+                    get_agent_step_logger(state.get("session_id", "unknown")),
+                    step=iteration * 10 + 5,  # Unique step number
+                    phase="response",
+                    model=state.get("model", "unknown"),
+                    version="v1",
+                    user_id=state.get("user_id", "unknown"),
+                    session_id=state.get("session_id", "unknown"),
+                    message=f"[Final Response] {final_text[:500]}",
+                )
+                
                 agent_logger.warning(
                     "agent_run_done_no_tool",
                     user_id=state.get("user_id"),
@@ -542,7 +555,7 @@ class ReActAgent:
 
         handlers = {
             "get_user_location": self._tool_get_user_location,
-            "search_google_places": self._tool_search_google_places,
+            "search_places_api": self._tool_search_google_places,
             "calculate_scores": self._tool_calculate_scores,
             "save_user_selection": self._tool_save_user_selection,
             "get_user_preference": self._tool_get_user_preference,

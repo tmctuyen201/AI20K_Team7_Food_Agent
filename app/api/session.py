@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import json
 import uuid
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
-from fastapi import APIRouter, Query, status
+from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
 from app.core.auth import create_access_token
@@ -39,22 +41,36 @@ def _create_session_sync(
     """Create session + JWT synchronously (shared by both POST and GET)."""
     # Upsert user in JSON store
     existing = users_store.get(user_id) or {}
-    users_store.set(user_id, {
-        "user_id": user_id,
-        "name": name or existing.get("name", ""),
-        "latitude": latitude,
-        "longitude": longitude,
-    })
+    users_store.set(
+        user_id,
+        {
+            "user_id": user_id,
+            "name": name or existing.get("name", ""),
+            "latitude": latitude,
+            "longitude": longitude,
+        },
+    )
 
     # Create session
     session_id = f"sess_{uuid.uuid4().hex[:12]}"
-    sessions_store.set(session_id, {
-        "session_id": session_id,
-        "user_id": user_id,
-        "latitude": latitude,
-        "longitude": longitude,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    })
+    sessions_store.set(
+        session_id,
+        {
+            "session_id": session_id,
+            "user_id": user_id,
+            "latitude": latitude,
+            "longitude": longitude,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        },
+    )
+
+    # Also initialize chat history for this session
+    from app.db.connection import chat_history_store
+
+    all_chat_sessions = chat_history_store._read()
+    if session_id not in all_chat_sessions:
+        all_chat_sessions[session_id] = {"messages": []}
+        chat_history_store._write(all_chat_sessions)
 
     # Mint JWT (24h)
     expires = datetime.now(timezone.utc) + timedelta(hours=24)
@@ -67,7 +83,11 @@ def _create_session_sync(
     return session_id, token, expires
 
 
-@router.post("/api/session", response_model=CreateSessionResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/api/session",
+    response_model=CreateSessionResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 async def create_session(request: CreateSessionRequest) -> CreateSessionResponse:
     session_id, token, expires = _create_session_sync(
         user_id=request.user_id,
@@ -120,4 +140,65 @@ async def get_or_create_session(
         user_id=user_id,
         token=token,
         expires_at=expires.isoformat(),
+    )
+
+
+class ChatMessage(BaseModel):
+    timestamp: str
+    role: str  # "user" or "assistant"
+    content: str
+
+
+class ChatHistoryResponse(BaseModel):
+    session_id: str
+    messages: list[ChatMessage]
+
+
+@router.get("/api/sessions/{user_id}")
+async def get_user_sessions(user_id: str) -> list[dict]:
+    """Return all sessions for a user, most recent first."""
+    all_sessions = sessions_store._read()
+
+    user_sessions = [
+        {
+            "session_id": sid,
+            "user_id": data.get("user_id", ""),
+            "created_at": data.get("created_at", ""),
+        }
+        for sid, data in all_sessions.items()
+        if data.get("user_id") == user_id
+    ]
+
+    user_sessions.sort(key=lambda s: s.get("created_at", ""), reverse=True)
+
+    logger.info("sessions_listed", user_id=user_id, count=len(user_sessions))
+    return user_sessions
+
+
+@router.get("/api/session/{session_id}/history", response_model=ChatHistoryResponse)
+async def get_chat_history(session_id: str) -> ChatHistoryResponse:
+    """Get chat history for a session from the JSON store."""
+    from app.db.connection import chat_history_store
+
+    # Load all messages for this session
+    all_sessions = chat_history_store._read()
+    session_messages = all_sessions.get(session_id, {}).get("messages", [])
+
+    messages = [
+        ChatMessage(
+            timestamp=msg.get("timestamp", ""),
+            role=msg.get("role", "user"),
+            content=msg.get("content", ""),
+        )
+        for msg in session_messages
+        if msg.get("content")
+    ]
+
+    logger.info(
+        "chat_history_retrieved", session_id=session_id, message_count=len(messages)
+    )
+
+    return ChatHistoryResponse(
+        session_id=session_id,
+        messages=messages,
     )

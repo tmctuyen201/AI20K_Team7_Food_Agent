@@ -10,6 +10,8 @@ import type {
   ScoredPlace,
   ToolResultEntry,
   WsMessage,
+  ChatHistoryMessage,
+  ChatHistoryResponse,
 } from "../types";
 import {
   storageService,
@@ -116,6 +118,10 @@ interface UseChatReturn {
   createNewChat: () => void;
   loadChatSession: (id: string) => void;
   deleteChatSession: (id: string) => void;
+  chatHistory: ChatHistoryMessage[];
+  chatHistoryLoading: boolean;
+  chatHistoryError: string | null;
+  fetchChatHistory: (sessionId: string) => Promise<void>;
 }
 
 export function useChat(): UseChatReturn {
@@ -137,14 +143,83 @@ export function useChat(): UseChatReturn {
   const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState("");
 
+  // ── Chat history state ──────────────────────────────────────────────────────
+  const [chatHistory, setChatHistory] = useState<ChatHistoryMessage[]>([]);
+  const [chatHistoryLoading, setChatHistoryLoading] = useState(false);
+  const [chatHistoryError, setChatHistoryError] = useState<string | null>(null);
+
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const userIdRef = useRef(selectedUserId);
   const sessionIdRef = useRef("");
+  const lastMessageSent = useRef<string>("");
 
   useEffect(() => {
     userIdRef.current = selectedUserId;
+    // Reset last message when user changes
+    lastMessageSent.current = "";
   }, [selectedUserId]);
+
+  // ── Fetch all backend sessions for a user ───────────────────────────────────
+
+  const fetchUserSessions = useCallback(
+    async (user_id: string): Promise<Array<{ session_id: string; created_at: string; user_id: string }>> => {
+      try {
+        const res = await fetch(`${BACKEND_URL}/api/sessions/${encodeURIComponent(user_id)}`);
+        if (!res.ok) {
+          console.error(`Failed to fetch sessions for user ${user_id}:`, res.status);
+          return [];
+        }
+        const data = await res.json();
+        console.log('Fetched backend sessions:', data);
+        return data;
+      } catch (error) {
+        console.error('Error fetching user sessions:', error);
+        return [];
+      }
+    },
+    [],
+  );
+
+  // ── Fetch chat history ──────────────────────────────────────────────────────
+
+  const fetchChatHistory = useCallback(
+    async (sessionId: string) => {
+      if (!sessionId) return;
+
+      setChatHistoryLoading(true);
+      setChatHistoryError(null);
+
+      try {
+        const response = await fetch(
+          `${BACKEND_URL}/api/session/${sessionId}/history`,
+        );
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const data: ChatHistoryResponse = await response.json();
+
+        // Convert backend format to frontend format if needed
+        const formattedMessages: ChatHistoryMessage[] = data.messages.map(msg => ({
+          timestamp: msg.timestamp,
+          role: msg.role as 'user' | 'assistant',
+          content: msg.content,
+        }));
+
+        setChatHistory(formattedMessages);
+        console.log(`Loaded ${formattedMessages.length} messages for session ${sessionId}`);
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : "Unknown error";
+        setChatHistoryError(errorMessage);
+        console.error("[useChat] Failed to fetch chat history:", error);
+      } finally {
+        setChatHistoryLoading(false);
+      }
+    },
+    [],
+  );
 
   // ── Step 1: Create session → get JWT (auto on mount) ────────────────────────
 
@@ -170,18 +245,58 @@ export function useChat(): UseChatReturn {
     [],
   );
 
-  // ── Auto-init: create session + connect WS on mount ─────────────────────────
+  // ── Auto-init: load backend sessions on mount ────────────────────────
 
   useEffect(() => {
     let mounted = true;
 
     const init = async () => {
       try {
-        const session = await createSession(selectedUserId);
+        // 1. Fetch all backend sessions for this user
+        const backendSessions = await fetchUserSessions(selectedUserId);
         if (!mounted) return;
-        sessionIdRef.current = session.session_id;
-        setSessionInfo(session);
-        await connectWs(session.token);
+
+        // 2. Convert backend sessions to ChatSession format for sidebar
+        const chatSessionsFromBackend: ChatSession[] = backendSessions.map((s) => ({
+          id: s.session_id,
+          user_id: selectedUserId,
+          model: selectedModel,
+          version: selectedVersion,
+          title: `Session ${s.session_id.slice(-8)}`,
+          preview: "",
+          turns: [],
+          created_at: new Date(s.created_at).getTime(),
+          updated_at: new Date(s.created_at).getTime(),
+        }));
+
+        setChatSessions(chatSessionsFromBackend);
+
+        // 3. Create a new session for the current visit
+        const newSession = await createSession(selectedUserId);
+        if (!mounted) return;
+
+        sessionIdRef.current = newSession.session_id;
+        setCurrentSessionId(newSession.session_id);
+        setSessionInfo(newSession);
+
+        // Add the new session to the top of the list
+        const newChatSession: ChatSession = {
+          id: newSession.session_id,
+          user_id: selectedUserId,
+          model: selectedModel,
+          version: selectedVersion,
+          title: "New Chat",
+          preview: "",
+          turns: [],
+          created_at: Date.now(),
+          updated_at: Date.now(),
+        };
+
+        setChatSessions((prev) => [newChatSession, ...prev]);
+
+        // Connect WebSocket and load chat history
+        await connectWs(newSession.token);
+        fetchChatHistory(newSession.session_id);
       } catch (err) {
         if (!mounted) return;
         console.error("[useChat] init failed:", err);
@@ -381,6 +496,16 @@ export function useChat(): UseChatReturn {
 
   const sendMessage = useCallback(
     async (text: string) => {
+      console.log(`[FE] sendMessage called with: "${text}"`);
+
+      // Prevent duplicate sends
+      if (text.trim() === lastMessageSent.current) {
+        console.log(`[FE] Skipping duplicate message: "${text}"`);
+        return;
+      }
+      lastMessageSent.current = text.trim();
+      console.log(`[FE] Processing new message: "${text}"`);
+
       const userTurn: AgentTurn = {
         role: "user",
         message: text,
@@ -406,6 +531,8 @@ export function useChat(): UseChatReturn {
           currentSession = await createSession(userIdRef.current);
           sessionIdRef.current = currentSession.session_id;
           setSessionInfo(currentSession);
+          // Update currentSessionId to the REAL backend session ID so history API works
+          setCurrentSessionId(currentSession.session_id);
           await connectWs(currentSession.token);
         } catch (err) {
           const errMsg = err instanceof Error ? err.message : "Cannot connect";
@@ -420,6 +547,7 @@ export function useChat(): UseChatReturn {
           return;
         }
         // connectWs set wsRef.current — re-read after awaiting
+        console.log(`Sending message via NEW WebSocket connection: "${text}"`);
         wsRef.current?.send(
           JSON.stringify({
             text,
@@ -429,6 +557,7 @@ export function useChat(): UseChatReturn {
           }),
         );
       } else {
+        console.log(`Sending message via EXISTING WebSocket connection: "${text}"`);
         ws.send(
           JSON.stringify({
             text,
@@ -438,15 +567,21 @@ export function useChat(): UseChatReturn {
           }),
         );
       }
+
+      // Refresh chat history after sending message
+      if (sessionIdRef.current) {
+        // Update the current session's preview with the last message
+        setChatSessions(prev =>
+          prev.map(s =>
+            s.id === sessionIdRef.current
+              ? { ...s, preview: text.length > 50 ? text.substring(0, 50) + "..." : text, updated_at: Date.now() }
+              : s
+          )
+        );
+      }
+
     },
-    [
-      sessionInfo,
-      createSession,
-      connectWs,
-      selectedModel,
-      selectedVersion,
-      isComparing,
-    ],
+    [sessionInfo, createSession, connectWs, selectedModel, selectedVersion, isComparing],
   );
 
   // ── Switch user → new session ───────────────────────────────────────────────
@@ -464,18 +599,53 @@ export function useChat(): UseChatReturn {
       setSessionInfo(null);
       setStatus("disconnected");
       setCompareResult(null);
+      setChatHistory([]);
 
       try {
+        // Fetch all backend sessions for the new user
+        const backendSessions = await fetchUserSessions(newId);
+
+        // Convert to ChatSession format
+        const chatSessionsFromBackend: ChatSession[] = backendSessions.map((s) => ({
+          id: s.session_id,
+          user_id: newId,
+          model: selectedModel,
+          version: selectedVersion,
+          title: `Session ${s.session_id.slice(-6)}`,
+          preview: "",
+          turns: [],
+          created_at: new Date(s.created_at).getTime(),
+          updated_at: new Date(s.created_at).getTime(),
+        }));
+
+        // Create a new session for the current visit
         const session = await createSession(newId);
         sessionIdRef.current = session.session_id;
+        setCurrentSessionId(session.session_id);
         setSessionInfo(session);
+
+        // Add new session to the top
+        const newChatSession: ChatSession = {
+          id: session.session_id,
+          user_id: newId,
+          model: selectedModel,
+          version: selectedVersion,
+          title: "New Chat",
+          preview: "",
+          turns: [],
+          created_at: Date.now(),
+          updated_at: Date.now(),
+        };
+
+        setChatSessions([newChatSession, ...chatSessionsFromBackend]);
         await connectWs(session.token);
+        fetchChatHistory(session.session_id);
       } catch (err) {
         console.error("[useChat] switch user failed:", err);
         setStatus("error");
       }
     },
-    [createSession, connectWs],
+    [createSession, connectWs, fetchChatHistory, fetchUserSessions, selectedModel, selectedVersion],
   );
 
   // ── Select place → send select_place via WebSocket ──────────────────────────
@@ -528,46 +698,94 @@ export function useChat(): UseChatReturn {
 
   // ── Chat session management ──────────────────────────────────────────────────
 
-  const createNewChat = useCallback(() => {
+  const createNewChat = useCallback(async () => {
     if (wsRef.current) {
       wsRef.current.close();
       wsRef.current = null;
     }
-    const newId = `sess_${Date.now()}`;
-    const newSession: ChatSession = {
-      id: newId,
-      user_id: selectedUserId,
-      model: selectedModel,
-      version: selectedVersion,
-      title: "",
-      preview: "",
-      turns: [],
-      created_at: Date.now(),
-      updated_at: Date.now(),
-    };
-    setChatSessions((prev) => [newSession, ...prev].slice(0, 50));
-    setCurrentSessionId(newId);
-    setTurns([]);
-    setLastPlaces([]);
-    setSessionInfo(null);
-    setStatus("disconnected");
-    setCompareResult(null);
-  }, [selectedUserId, selectedModel, selectedVersion]);
+
+    try {
+      // Create a new backend session
+      const session = await createSession(selectedUserId);
+      sessionIdRef.current = session.session_id;
+      setSessionInfo(session);
+
+      const newChatSession: ChatSession = {
+        id: session.session_id,
+        user_id: selectedUserId,
+        model: selectedModel,
+        version: selectedVersion,
+        title: "New Chat",
+        preview: "",
+        turns: [],
+        created_at: Date.now(),
+        updated_at: Date.now(),
+      };
+
+      // Add new session to the top of the list
+      setChatSessions((prev) => [newChatSession, ...prev]);
+
+      setCurrentSessionId(session.session_id);
+      setTurns([]);
+      setLastPlaces([]);
+      setStatus("disconnected");
+      setCompareResult(null);
+      setChatHistory([]);
+
+      await connectWs(session.token);
+      console.log(`Created new chat session: ${session.session_id}`);
+    } catch (err) {
+      console.error("[useChat] createNewChat failed:", err);
+      setStatus("error");
+    }
+  }, [selectedUserId, selectedModel, selectedVersion, createSession, connectWs]);
 
   const loadChatSession = useCallback(
-    (id: string) => {
+    async (id: string) => {
       const session = chatSessions.find((s) => s.id === id);
-      if (!session) return;
+      if (!session) {
+        console.error(`Session ${id} not found in chatSessions:`, chatSessions);
+        return;
+      }
+
       setCurrentSessionId(id);
-      setTurns(session.turns);
       setCompareResult(null);
+
+      console.log(`Fetching chat history for session: ${id}`);
+      // Fetch chat history from backend for the selected session
+      await fetchChatHistory(id);
+
+      // Also load the messages into the main chat window
+      try {
+        const response = await fetch(`${BACKEND_URL}/api/session/${id}/history`);
+        if (response.ok) {
+          const data: ChatHistoryResponse = await response.json();
+
+          // Convert chat history messages to AgentTurn format for main chat
+          const turnsFromHistory: AgentTurn[] = data.messages.map((msg, index) => ({
+            role: msg.role as 'user' | 'assistant',
+            message: msg.content,
+            timestamp: new Date(msg.timestamp).getTime(),
+            // Add basic properties, places and other fields will be empty for historical messages
+            places: [],
+            parsedPlaces: [],
+          }));
+
+          setTurns(turnsFromHistory);
+          console.log(`Loaded ${turnsFromHistory.length} turns into main chat for session ${id}`);
+        }
+      } catch (error) {
+        console.error(`Failed to load chat history into main chat for session ${id}:`, error);
+      }
     },
     [chatSessions],
   );
 
   const deleteChatSession = useCallback(
     (id: string) => {
+      // Remove from local state
       setChatSessions((prev) => prev.filter((s) => s.id !== id));
+
       if (currentSessionId === id) {
         if (wsRef.current) {
           wsRef.current.close();
@@ -577,35 +795,15 @@ export function useChat(): UseChatReturn {
         setCurrentSessionId("");
         setStatus("disconnected");
         setCompareResult(null);
+        setChatHistory([]);
       }
+
+      console.log(`Deleted session: ${id}`);
     },
     [currentSessionId],
   );
 
-  // ── Persist sessions to localStorage ────────────────────────────────────────
 
-  useEffect(() => {
-    try {
-      localStorage.setItem(
-        "foodie_chat_sessions",
-        JSON.stringify(chatSessions),
-      );
-    } catch {
-      /* ignore quota errors */
-    }
-  }, [chatSessions]);
-
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem("foodie_chat_sessions");
-      if (stored) {
-        setChatSessions(JSON.parse(stored) as ChatSession[]);
-      }
-    } catch {
-      /* ignore corrupt storage */
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   // ── Cleanup on unmount ──────────────────────────────────────────────────────
 
@@ -647,5 +845,9 @@ export function useChat(): UseChatReturn {
     createNewChat,
     loadChatSession,
     deleteChatSession,
+    chatHistory,
+    chatHistoryLoading,
+    chatHistoryError,
+    fetchChatHistory,
   };
 }

@@ -25,6 +25,9 @@ class AgentState(TypedDict):
     last_radius: int
     messages: list[str]
     is_complete: bool
+    # Personalization
+    preferences: Optional[dict]
+    search_done: bool
 
 
 @dataclass

@@ -33,26 +33,55 @@ def parse_intent(
     user_id = state["user_id"]
 
     if step_callback:
-        step_callback({
-            "type": "reasoning",
-            "step": step,
-            "text": f"[Step {step}] Parsing intent from: {user_message[:80]}",
-            "tool": None,
-        })
+        step_callback(
+            {
+                "type": "reasoning",
+                "step": step,
+                "text": f"[Step {step}] Parsing intent from: {user_message[:80]}",
+                "tool": None,
+            }
+        )
 
     # Vietnamese and international food keywords
     food_keywords = [
-        "phở", "bún", "cơm", "bánh", "trà", "cà phê",
-        "hải sản", "nướng", "lẩu", "burger", "pizza",
-        "sushi", "thịt", "gà", "bò", "mì", "cá",
-        "cappuccino", "espresso", "trà sữa", "bubble tea",
-        "đồ ăn", "quán", "nhà hàng", "ăn", "uống",
+        "phở",
+        "bún",
+        "cơm",
+        "bánh",
+        "trà",
+        "cà phê",
+        "hải sản",
+        "nướng",
+        "lẩu",
+        "burger",
+        "pizza",
+        "sushi",
+        "thịt",
+        "gà",
+        "bò",
+        "mì",
+        "cá",
+        "cappuccino",
+        "espresso",
+        "trà sữa",
+        "bubble tea",
+        "đồ ăn",
+        "quán",
+        "nhà hàng",
+        "ăn",
+        "uống",
     ]
 
     # Selection / confirmation keywords
     select_keywords = [
-        "chọn", "tôi chọn", "em chọn", "mình chọn",
-        "lấy quán", "đặt", "book", "reserve",
+        "chọn",
+        "tôi chọn",
+        "em chọn",
+        "mình chọn",
+        "lấy quán",
+        "đặt",
+        "book",
+        "reserve",
     ]
 
     # 1. Detect "select" intent first
@@ -60,14 +89,18 @@ def parse_intent(
         state["intent"] = "select"
         state["keyword"] = None
         state["is_complete"] = True
-        state["messages"].append("parse_intent: intent=select (user chose a restaurant)")
+        state["messages"].append(
+            "parse_intent: intent=select (user chose a restaurant)"
+        )
         if step_callback:
-            step_callback({
-                "type": "reasoning",
-                "step": step,
-                "text": f"[Step {step}] Intent detected: select (user chose a restaurant)",
-                "tool": None,
-            })
+            step_callback(
+                {
+                    "type": "reasoning",
+                    "step": step,
+                    "text": f"[Step {step}] Intent detected: select (user chose a restaurant)",
+                    "tool": None,
+                }
+            )
         return state
 
     # 2. Detect food keyword
@@ -84,12 +117,14 @@ def parse_intent(
             f"parse_intent: intent=find_restaurant keyword={found_keyword}"
         )
         if step_callback:
-            step_callback({
-                "type": "reasoning",
-                "step": step,
-                "text": f"[Step {step}] Intent detected: find_restaurant (keyword={found_keyword})",
-                "tool": None,
-            })
+            step_callback(
+                {
+                    "type": "reasoning",
+                    "step": step,
+                    "text": f"[Step {step}] Intent detected: find_restaurant (keyword={found_keyword})",
+                    "tool": None,
+                }
+            )
     else:
         # No food keyword → still run through the pipeline (no search)
         # but LLM will respond naturally as a friendly food agent
@@ -98,12 +133,14 @@ def parse_intent(
         state["is_complete"] = True
         state["messages"].append("parse_intent: intent=None (not food-related)")
         if step_callback:
-            step_callback({
-                "type": "reasoning",
-                "step": step,
-                "text": f"[Step {step}] Intent detected: None (not food-related)",
-                "tool": None,
-            })
+            step_callback(
+                {
+                    "type": "reasoning",
+                    "step": step,
+                    "text": f"[Step {step}] Intent detected: None (not food-related)",
+                    "tool": None,
+                }
+            )
 
     return state
 
@@ -117,12 +154,14 @@ def get_location(
     user_id = state["user_id"]
 
     if step_callback:
-        step_callback({
-            "type": "reasoning",
-            "step": step,
-            "text": f"[Step {step}] Getting user location...",
-            "tool": "get_user_location",
-        })
+        step_callback(
+            {
+                "type": "reasoning",
+                "step": step,
+                "text": f"[Step {step}] Getting user location...",
+                "tool": "get_user_location",
+            }
+        )
 
     registry = get_tool_registry()
     location_tool = registry["get_user_location"]
@@ -135,12 +174,60 @@ def get_location(
     )
 
     if step_callback:
-        step_callback({
-            "type": "tool_result",
-            "tool": "get_user_location",
-            "result": {"lat": result["lat"], "lng": result["lng"], "source": result["source"]},
-            "error": None,
-        })
+        step_callback(
+            {
+                "type": "tool_result",
+                "tool": "get_user_location",
+                "result": {
+                    "lat": result["lat"],
+                    "lng": result["lng"],
+                    "source": result["source"],
+                },
+                "error": None,
+            }
+        )
+
+    return state
+
+
+def get_preference(
+    state: AgentState,
+    step_callback: Callable | None = None,
+) -> AgentState:
+    """Load user preferences for personalized recommendations."""
+    step = _next_step()
+    user_id = state["user_id"]
+
+    if step_callback:
+        step_callback(
+            {
+                "type": "reasoning",
+                "step": step,
+                "text": f"[Step {step}] Loading user preferences...",
+                "tool": "get_user_preference",
+            }
+        )
+
+    registry = get_tool_registry()
+    pref_tool = registry["get_user_preference"]
+    pref: dict[str, Any] = pref_tool._run(user_id=user_id)
+
+    state["preferences"] = pref
+
+    if step_callback:
+        step_callback(
+            {
+                "type": "tool_result",
+                "tool": "get_user_preference",
+                "result": {
+                    "has_history": pref.get("has_history", False),
+                    "total_selections": pref.get("total_selections", 0),
+                    "favorite_cuisines": pref.get("favorite_cuisines", []),
+                    "avg_rating": pref.get("avg_rating", 0.0),
+                },
+                "error": None,
+            }
+        )
 
     return state
 
@@ -153,19 +240,17 @@ def search_places(
 
     Skipped entirely when intent is None (off-topic message) or "select".
     """
-    import sys
-    sys.stderr.write(f"[DEBUG search_places] ENTERING intent={state.get('intent')} keyword={state.get('keyword')}\n")
-    sys.stderr.flush()
-
     step = _next_step()
 
     if step_callback:
-        step_callback({
-            "type": "reasoning",
-            "step": step,
-            "text": f"[Step {step}] Searching Google Places...",
-            "tool": "search_google_places",
-        })
+        step_callback(
+            {
+                "type": "reasoning",
+                "step": step,
+                "text": f"[Step {step}] Searching Google Places...",
+                "tool": "search_google_places",
+            }
+        )
 
     # Skip search for non-food messages or selection confirmations
     if state.get("intent") not in ("find_restaurant",):
@@ -174,12 +259,14 @@ def search_places(
         state["scored_places"] = []
         state["messages"].append("search_places: skipped (intent not find_restaurant)")
         if step_callback:
-            step_callback({
-                "type": "tool_result",
-                "tool": "search_google_places",
-                "result": {"count": 0, "skipped": True},
-                "error": None,
-            })
+            step_callback(
+                {
+                    "type": "tool_result",
+                    "tool": "search_google_places",
+                    "result": {"count": 0, "skipped": True},
+                    "error": None,
+                }
+            )
         return state
 
     location = state["location"]
@@ -209,24 +296,195 @@ def search_places(
 
     state["messages"].append(f"search_places: found {len(places)} places")
 
-    # DEBUG: log raw_results before conversion
-    from app.core.logging import get_logger
-    _log = get_logger("foodie.nodes")
-    _log.debug(
-        "search_places_result",
+    if step_callback:
+        step_callback(
+            {
+                "type": "tool_result",
+                "tool": "search_google_places",
+                "result": {"count": len(places)},
+                "error": None,
+            }
+        )
+
+    return state
+
+    location = state["location"]
+    keyword = state.get("keyword", "restaurant")
+    radius = state.get("last_radius", 2000)
+
+    registry = get_tool_registry()
+    search_tool = registry["search_google_places"]
+
+    try:
+        raw_results: list[dict[str, Any]] = search_tool._run(
+            location=location,
+            keyword=keyword,
+            radius=radius,
+            open_now=True,
+        )
+
+        # Check if this is a fallback result
+        if isinstance(raw_results, dict) and raw_results.get("fallback"):
+            state["search_error"] = raw_results.get(
+                "error", "Search tool fallback triggered"
+            )
+            state["messages"].append(
+                f"Search warning: {raw_results['error']} - using fallback data"
+            )
+            # Use empty results to trigger fallback
+            places = []
+            state["_next_node"] = "fallback_search"
+        else:
+            # Convert raw dicts to Place model objects
+            places = [Place(**r) for r in raw_results]
+            state["_next_node"] = "score_places"
+
+        state["places"] = places
+        state["search_done"] = True  # flag for guardrail: search has run
+
+        # Track shown place IDs to avoid duplicates
+        existing_ids: set[str] = set(state.get("shown_place_ids", []))
+        for place in places:
+            existing_ids.add(place.place_id)
+        state["shown_place_ids"] = list(existing_ids)
+
+        state["messages"].append(f"search_places: found {len(places)} places")
+
+        if step_callback:
+            step_callback(
+                {
+                    "type": "tool_result",
+                    "tool": "search_google_places",
+                    "result": {"count": len(places)},
+                    "error": None,
+                }
+            )
+
+    except Exception as e:
+        # Search completely failed - set error flag for recovery
+        state["search_error"] = str(e)
+        state["places"] = []
+        state["search_done"] = False
+        state["_next_node"] = "fallback_search"
+        state["messages"].append(f"Search error: {e} - will use fallback data")
+
+        if step_callback:
+            step_callback(
+                {
+                    "type": "tool_result",
+                    "tool": "search_google_places",
+                    "result": {"count": 0, "error": str(e)},
+                    "error": str(e),
+                }
+            )
+
+    return state
+
+    location = state["location"]
+    keyword = state.get("keyword", "restaurant")
+    radius = state.get("last_radius", 2000)
+
+    registry = get_tool_registry()
+    search_tool = registry["search_google_places"]
+
+    try:
+        raw_results: list[dict[str, Any]] = search_tool._run(
+            location=location,
+            keyword=keyword,
+            radius=radius,
+            open_now=True,
+        )
+
+        # Check if this is a fallback result
+        if isinstance(raw_results, dict) and raw_results.get("fallback"):
+            state["search_error"] = raw_results.get(
+                "error", "Search tool fallback triggered"
+            )
+            state["messages"].append(
+                f"Search warning: {raw_results['error']} - using fallback data"
+            )
+            # Use empty results to trigger fallback
+            places = []
+        else:
+            # Convert raw dicts to Place model objects
+            places = [Place(**r) for r in raw_results]
+
+        state["places"] = places
+        state["search_done"] = True  # flag for guardrail: search has run
+
+        # Track shown place IDs to avoid duplicates
+        existing_ids: set[str] = set(state.get("shown_place_ids", []))
+        for place in places:
+            existing_ids.add(place.place_id)
+        state["shown_place_ids"] = list(existing_ids)
+
+        state["messages"].append(f"search_places: found {len(places)} places")
+
+        if step_callback:
+            step_callback(
+                {
+                    "type": "tool_result",
+                    "tool": "search_google_places",
+                    "result": {"count": len(places)},
+                    "error": None,
+                }
+            )
+
+    except Exception as e:
+        # Search completely failed - set error flag for recovery
+        state["search_error"] = str(e)
+        state["places"] = []
+        state["search_done"] = False
+        state["messages"].append(f"Search error: {e} - will use fallback data")
+
+        if step_callback:
+            step_callback(
+                {
+                    "type": "tool_result",
+                    "tool": "search_google_places",
+                    "result": {"count": 0, "error": str(e)},
+                    "error": str(e),
+                }
+            )
+
+    return state
+
+    location = state["location"]
+    keyword = state.get("keyword", "restaurant")
+    radius = state.get("last_radius", 2000)
+
+    registry = get_tool_registry()
+    search_tool = registry["search_google_places"]
+
+    raw_results: list[dict[str, Any]] = search_tool._run(
+        location=location,
         keyword=keyword,
         radius=radius,
-        raw_results_count=len(raw_results),
-        first_place=raw_results[0].get("name") if raw_results else None,
+        open_now=True,
     )
 
+    # Convert raw dicts to Place model objects
+    places = [Place(**r) for r in raw_results]
+    state["places"] = places
+    state["search_done"] = True  # flag for guardrail: search has run
+
+    # Track shown place IDs to avoid duplicates
+    existing_ids: set[str] = set(state.get("shown_place_ids", []))
+    for place in places:
+        existing_ids.add(place.place_id)
+    state["shown_place_ids"] = list(existing_ids)
+
+    state["messages"].append(f"search_places: found {len(places)} places")
+
     if step_callback:
-        step_callback({
-            "type": "tool_result",
-            "tool": "search_google_places",
-            "result": {"count": len(places)},
-            "error": None,
-        })
+        step_callback(
+            {
+                "type": "tool_result",
+                "tool": "search_google_places",
+                "result": {"count": len(places)},
+                "error": None,
+            }
+        )
 
     return state
 
@@ -240,23 +498,27 @@ def score_places(
     places = state.get("places", [])
 
     if step_callback:
-        step_callback({
-            "type": "reasoning",
-            "step": step,
-            "text": f"[Step {step}] Scoring {len(places)} places...",
-            "tool": "calculate_scores",
-        })
+        step_callback(
+            {
+                "type": "reasoning",
+                "step": step,
+                "text": f"[Step {step}] Scoring {len(places)} places...",
+                "tool": "calculate_scores",
+            }
+        )
 
     if not places:
         state["is_complete"] = True
         state["messages"].append("score_places: no places to score")
         if step_callback:
-            step_callback({
-                "type": "tool_result",
-                "tool": "calculate_scores",
-                "result": {"count": 0},
-                "error": None,
-            })
+            step_callback(
+                {
+                    "type": "tool_result",
+                    "tool": "calculate_scores",
+                    "result": {"count": 0},
+                    "error": None,
+                }
+            )
         return state
 
     registry = get_tool_registry()
@@ -277,12 +539,14 @@ def score_places(
     state["messages"].append(f"score_places: top {len(scored)} scored places")
 
     if step_callback:
-        step_callback({
-            "type": "tool_result",
-            "tool": "calculate_scores",
-            "result": {"count": len(scored)},
-            "error": None,
-        })
+        step_callback(
+            {
+                "type": "tool_result",
+                "tool": "calculate_scores",
+                "result": {"count": len(scored)},
+                "error": None,
+            }
+        )
 
     return state
 
@@ -302,6 +566,7 @@ def should_continue(state: AgentState) -> str:
 
 
 # ── No-tools version ────────────────────────────────────────────────────────────
+
 
 async def run_no_tools(
     user_message: str,

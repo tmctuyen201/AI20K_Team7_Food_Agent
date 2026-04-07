@@ -68,7 +68,7 @@ export default function ChatWindow({ turns, isLoading, onSelectPlace, onSelectPa
           const isLast = idx === turns.length - 1;
 
           return (
-            <div key={turn.timestamp} className={`msg ${turn.role}`}>
+            <div key={`${idx}-${turn.timestamp}`} className={`msg ${turn.role}`}>
               {/* Bubble */}
               <div className="msg-bubble">
                 {turn.role === 'user' ? (

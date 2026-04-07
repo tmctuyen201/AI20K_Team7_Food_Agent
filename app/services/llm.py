@@ -69,6 +69,7 @@ class LLMClient:
         if self._litellm is None:
             try:
                 from litellm import completion
+
                 self._litellm = completion
             except ImportError:
                 logger.warning("litellm not installed, LLM calls will be mocked")
@@ -80,6 +81,7 @@ class LLMClient:
         user_message: str,
         places_context: str,
         model: str | None = None,
+        history: list[dict] | None = None,
     ) -> AsyncGenerator[str, None]:
         """Generate a natural language response about restaurant recommendations.
 
@@ -87,6 +89,7 @@ class LLMClient:
             user_message: The user's message.
             places_context: Context string built from scored places.
             model: Optional model override for this call.
+            history: Prior conversation turns to prepend (list of {role, content}).
 
         Yields:
             Token strings for streaming response.
@@ -97,7 +100,11 @@ class LLMClient:
         if model:
             if model.startswith("claude-"):
                 resolved_provider = "anthropic"
-            elif model.startswith("gpt-") or model.startswith("o1") or model.startswith("o3"):
+            elif (
+                model.startswith("gpt-")
+                or model.startswith("o1")
+                or model.startswith("o3")
+            ):
                 resolved_provider = "openai"
         resolved_model = _resolve_model(resolved_provider, resolved_model)
 
@@ -132,12 +139,20 @@ Hãy giới thiệu các quán này một cách tự nhiên bằng tiếng Việ
         def _sync_stream() -> list[str]:
             """Run litellm non-streaming completion in a thread, collect full response."""
             try:
+                messages: list[dict] = [{"role": "system", "content": system_prompt}]
+
+                # Inject prior conversation turns so the LLM has context
+                if history:
+                    for msg in history:
+                        messages.append(
+                            {"role": msg["role"], "content": msg["content"]}
+                        )
+
+                messages.append({"role": "user", "content": user_prompt})
+
                 response = completion_fn(
                     model=resolved_model,
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt},
-                    ],
+                    messages=messages,
                     api_key=self.api_key,
                     max_tokens=500,
                     stream=False,
@@ -155,7 +170,11 @@ Hãy giới thiệu các quán này một cách tự nhiên bằng tiếng Việ
                 except (AttributeError, IndexError, TypeError) as e:
                     logger.warning("llm_response_parse_error", error=str(e))
 
-                logger.info("llm_response_parsed", model=resolved_model, tokens_count=len(tokens))
+                logger.info(
+                    "llm_response_parsed",
+                    model=resolved_model,
+                    tokens_count=len(tokens),
+                )
                 return tokens
             except Exception as e:
                 logger.error("llm_sync_error", error=str(e), model=resolved_model)
@@ -167,11 +186,9 @@ Hãy giới thiệu các quán này một cách tự nhiên bằng tiếng Việ
                 for token in tokens:
                     yield token
             else:
-                logger.warning("llm_empty_response", model=resolved_model, falling_back="mock")
-                async for chunk in self._mock_response(places_context):
-                    yield chunk
-                    model=resolved_model,
-                    falling_back="mock",
+                logger.warning(
+                    "llm_empty_response", model=resolved_model, falling_back="mock"
+                )
                 async for chunk in self._mock_response(places_context):
                     yield chunk
         except Exception as e:
@@ -187,7 +204,9 @@ Hãy giới thiệu các quán này một cách tự nhiên bằng tiếng Việ
     ) -> str:
         """Non-streaming version - returns full response as string."""
         chunks = []
-        async for chunk in self.generate_response(user_message, places_context, model=model):
+        async for chunk in self.generate_response(
+            user_message, places_context, model=model
+        ):
             chunks.append(chunk)
         return "".join(chunks)
 

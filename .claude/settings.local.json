@@ -3,7 +3,17 @@
     "allow": [
       "Bash(python -m py_compile app/agent/runner.py)",
       "Bash(python -m py_compile app/agent/nodes.py)",
-      "Bash(python -m py_compile app/core/guardrail.py)"
+      "Bash(python -m py_compile app/core/guardrail.py)",
+      "Bash(python -m py_compile app/api/chat.py)",
+      "Bash(python -m py_compile app/api/session.py)",
+      "Bash(python -m py_compile app/tools/preference_tool.py)",
+      "Bash(python -m py_compile app/tools/registry.py)",
+      "Bash(python -m py_compile app/agent/state.py)",
+      "Bash(python -m py_compile app/agent/prompt.py)",
+      "Bash(npx tsc:*)",
+      "Bash(npx vite:*)",
+      "Bash(python -c \"import ast; ast.parse\\(open\\(r'D:\\\\project\\\\vinai\\\\Day03-AI-Chatbot-labs\\\\app\\\\api\\\\chat.py', encoding='utf-8'\\).read\\(\\)\\)\")",
+      "Bash(python -c \"import ast; ast.parse\\(open\\(r'D:\\\\project\\\\vinai\\\\Day03-AI-Chatbot-labs\\\\app\\\\agent\\\\runner.py', encoding='utf-8'\\).read\\(\\)\\); ast.parse\\(open\\(r'D:\\\\project\\\\vinai\\\\Day03-AI-Chatbot-labs\\\\app\\\\api\\\\chat.py', encoding='utf-8'\\).read\\(\\)\\); print\\('OK'\\)\")"
     ]
   }
 }

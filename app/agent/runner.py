@@ -15,12 +15,12 @@ result is yielded as a single {"type": "compare_result", ...} event.
 from __future__ import annotations
 
 import asyncio
-import datetime
 from typing import AsyncGenerator, Callable, Optional
 
 from app.agent.nodes import (
     parse_intent,
     get_location,
+    get_preference,
     search_places,
     score_places,
     run_no_tools,
@@ -29,7 +29,12 @@ from app.agent.react_agent import ReActAgent
 from app.agent.state import AgentState
 from app.tools.definitions import get_tool_definitions
 from app.db.models import ScoredPlace
-from app.core.logging import get_agent_logger, get_agent_step_logger, log_agent_step, log_tool_result
+from app.core.logging import (
+    get_agent_logger,
+    get_agent_step_logger,
+    log_agent_step,
+    log_tool_result,
+)
 from app.services.llm import llm_client
 
 agent_logger = get_agent_logger()
@@ -46,12 +51,14 @@ def _inject_guardrail_state(
     state["is_complete"] = True
 
     if step_callback:
-        step_callback({
-            "type": "reasoning",
-            "step": 99,
-            "text": f"Guardrail triggered: {guardrail_result.name} — {guardrail_result.message}",
-            "tool": None,
-        })
+        step_callback(
+            {
+                "type": "reasoning",
+                "step": 99,
+                "text": f"Guardrail triggered: {guardrail_result.name} — {guardrail_result.message}",
+                "tool": None,
+            }
+        )
 
     return state
 
@@ -79,40 +86,58 @@ class AgentRunner:
         version: str = "v2",
         compare: bool = False,
         model: str | None = None,
+        history: list[dict] | None = None,
     ) -> AsyncGenerator[dict, None]:
+        agent_logger.info(
+            "[AGENT] run_async called",
+            user_message=user_message[:50],
+            version=version,
+            session_id=self.session_id,
+            user_id=self.user_id,
+        )
         """Run the selected agent version and stream step + token events.
 
         Args:
             user_message: The user's chat message.
             version: One of "v1" (ReAct), "v2" (LangGraph), "no-tools" (LLM-only).
             compare: If True, run all three versions and yield a single
-                     ``compare_result`` event after all complete.
+                      ``compare_result`` event after all complete.
             model: Per-call LLM model override. Takes precedence over the
-                   model set at construction time (``self.model``).
+                    model set at construction time (``self.model``).
+            history: Prior conversation turns to prepend (list of {role, content}).
 
         Yields:
             dict events:
               - {"type": "reasoning", "step": int, "text": str, "tool": str|None}
               - {"type": "tool_result", "tool": str, "result": dict, "error": str|None}
               - {"type": "token", "data": str}         ← LLM token
+
               - {"type": "compare_result", "versions": {...}}
         """
         # Per-call override takes precedence over the instance-level model
         effective_model = model if model is not None else self.model
 
         if compare:
-            async for event in self.run_compare(user_message, model=effective_model):
+            async for event in self.run_compare(
+                user_message, model=effective_model, history=history
+            ):
                 yield event
             return
 
         if version == "v1":
-            async for event in self._run_v1(user_message, effective_model):
+            async for event in self._run_v1(
+                user_message, effective_model, history=history
+            ):
                 yield event
         elif version == "v2":
-            async for event in self._run_v2(user_message, effective_model):
+            async for event in self._run_v2(
+                user_message, effective_model, history=history
+            ):
                 yield event
         elif version == "no-tools":
-            async for event in self._run_no_tools(user_message, effective_model):
+            async for event in self._run_no_tools(
+                user_message, effective_model, history=history
+            ):
                 yield event
         else:
             agent_logger.warning(
@@ -127,13 +152,16 @@ class AgentRunner:
                 "text": f"Unknown agent version: {version}. Falling back to v2.",
                 "tool": None,
             }
-            async for event in self._run_v2(user_message, effective_model):
+            async for event in self._run_v2(
+                user_message, effective_model, history=history
+            ):
                 yield event
 
     async def run_compare(
         self,
         user_message: str,
         model: str | None = None,
+        history: list[dict] | None = None,
     ) -> AsyncGenerator[dict, None]:
         """Run all three agent versions in parallel and yield a compare result.
 
@@ -150,9 +178,11 @@ class AgentRunner:
         effective_model = model if model is not None else self.model
 
         # Run all three in parallel
-        v1_coro = self._run_v1(user_message, effective_model)
-        v2_coro = self._run_v2(user_message, effective_model)
-        no_tools_coro = self._run_no_tools(user_message, effective_model)
+        v1_coro = self._run_v1(user_message, effective_model, history=history)
+        v2_coro = self._run_v2(user_message, effective_model, history=history)
+        no_tools_coro = self._run_no_tools(
+            user_message, effective_model, history=history
+        )
 
         results: dict[str, dict] = {}
 
@@ -171,12 +201,8 @@ class AgentRunner:
             evs = result.get("events", [])
             final_text = result.get("final_text", "")
 
-            reasoning_steps = [
-                e for e in evs if e.get("type") == "reasoning"
-            ]
-            tool_results = [
-                e for e in evs if e.get("type") == "tool_result"
-            ]
+            reasoning_steps = [e for e in evs if e.get("type") == "reasoning"]
+            tool_results = [e for e in evs if e.get("type") == "tool_result"]
             # Extract places from the last token / reasoning event if present
             places: list = []
 
@@ -198,6 +224,7 @@ class AgentRunner:
         self,
         user_message: str,
         model: str | None = None,
+        history: list[dict] | None = None,
     ) -> AsyncGenerator[dict, None]:
         """ReAct-style agent with streaming step events."""
         agent_logger.info(
@@ -283,7 +310,7 @@ class AgentRunner:
         # Stream LLM tokens
         final_text = ""
         async for token in llm_client.generate_response(
-            user_message, places_context, model=model
+            user_message, places_context, model=model, history=history
         ):
             final_text += token
             yield {"type": "token", "data": token}
@@ -298,13 +325,17 @@ class AgentRunner:
             places_count=len(scored_places),
         )
 
+        yield {"type": "done", "data": {"places": scored_places}}
+
     async def _run_v2(
         self,
         user_message: str,
         model: str | None = None,
+        history: list[dict] | None = None,
     ) -> AsyncGenerator[dict, None]:
         """LangGraph pipeline with streaming step events via step callbacks."""
         import sys as _sys
+
         print(f"[!!!] _run_v2 ENTRY user_message={user_message}", flush=True)
         _sys.stdout.flush()
         from queue import Queue, Empty
@@ -319,6 +350,7 @@ class AgentRunner:
 
         # Reset shared step counter (safe: single-user session)
         import app.agent.nodes as nodes_module
+
         nodes_module._graph_step_counter = 0
 
         step_logger = get_agent_step_logger(self.session_id)
@@ -356,10 +388,7 @@ class AgentRunner:
             event_queue.put(event)
 
         def run_graph_blocking() -> AgentState:
-            """Run the node pipeline synchronously in the executor thread."""
-            import sys
-            sys.stderr.write(f"[!!!] run_graph_blocking CALLED\n")
-            sys.stderr.flush()
+            """Run the agent pipeline manually with proper step callbacks."""
             try:
                 initial_state: AgentState = {
                     "user_id": self.user_id,
@@ -377,44 +406,79 @@ class AgentRunner:
                     "messages": [],
                     "is_complete": False,
                     "search_done": False,
+                    "preferences": None,
                 }
 
                 state = initial_state
-                # Apply each node in sequence, passing the step callback
-                state = parse_intent(state, step_callback=step_callback)
+
+                # Manual node execution with proper step callbacks
+                from app.agent.nodes import (
+                    parse_intent,
+                    get_location,
+                    get_preference,
+                    search_places,
+                    score_places,
+                )
+
+                # Parse intent
+                state = parse_intent(state, step_callback)
 
                 # Non-food intent (e.g. "hello") — skip location/search, go straight to LLM
                 if state.get("intent") is None:
                     state["is_complete"] = True
-                    state["messages"].append("run_graph_blocking: intent=None, skipped location/search")
+                    state["messages"].append(
+                        "run_graph_blocking: intent=None, skipped location/search"
+                    )
                     graph_done.set()
-                    print("Non-food intent detected, skipping location and search nodes.")
                     return state
 
-                state = get_location(state, step_callback=step_callback)
+                # Get location
+                state = get_location(state, step_callback)
 
-                # ── Guardrail: ambiguous / mock location ONLY (no search results needed) ──
-                from app.core.guardrail import check_guardrails, GuardrailResult
+                # Guardrail check after location
+                from app.core.guardrail import check_guardrails
 
                 guardrail_after_location = check_guardrails(state)
                 if guardrail_after_location.triggered:
                     state["guardrail_triggered"] = guardrail_after_location.name
                     state["guardrail_message"] = guardrail_after_location.message
                     state["is_complete"] = True
-                    state = _inject_guardrail_state(state, guardrail_after_location, step_callback)
+                    state = _inject_guardrail_state(
+                        state, guardrail_after_location, step_callback
+                    )
                     graph_done.set()
                     return state
 
-                # ALWAYS run search first — guardrail checks (zero / midnight)
-                # need populated places to evaluate correctly
-                sys.stderr.write(f"[DEBUG runner] About to call search_places\n")
-                sys.stderr.flush()
+                # Get preferences
+                state = get_preference(state, step_callback)
+
+                # Search places
+                state = search_places(state, step_callback)
+
+                # Guardrail check after search
+                guardrail_after_scoring = check_guardrails(state)
+                if guardrail_after_scoring.triggered:
+                    state["guardrail_triggered"] = guardrail_after_scoring.name
+                    state["guardrail_message"] = guardrail_after_scoring.message
+                    state["is_complete"] = True
+                    state = _inject_guardrail_state(
+                        state, guardrail_after_scoring, step_callback
+                    )
+                    graph_done.set()
+                    return state
+
+                # Score places
+                state = score_places(state, step_callback)
+
+                graph_done.set()
+                return state
+
+                # Load user preferences before searching (personalization)
+                state = get_preference(state, step_callback=step_callback)
+
+                # Search + score — guardrail (zero / midnight) runs after
                 state = search_places(state, step_callback=step_callback)
-                sys.stderr.write(f"[DEBUG runner] After search_places, places={len(state.get('places') or [])}, scored={len(state.get('scored_places') or [])}\n")
-                sys.stderr.flush()
                 state = score_places(state, step_callback=step_callback)
-                sys.stderr.write(f"[DEBUG runner] After score_places, scored={len(state.get('scored_places') or [])}\n")
-                sys.stderr.flush()
 
                 # ── Guardrail: zero-results / midnight AFTER search has run ─────────
                 guardrail_after_scoring = check_guardrails(state)
@@ -422,14 +486,13 @@ class AgentRunner:
                     state["guardrail_triggered"] = guardrail_after_scoring.name
                     state["guardrail_message"] = guardrail_after_scoring.message
                     state["is_complete"] = True
-                    state = _inject_guardrail_state(state, guardrail_after_scoring, step_callback)
+                    state = _inject_guardrail_state(
+                        state, guardrail_after_scoring, step_callback
+                    )
 
                 graph_done.set()
                 return state
-            except Exception as exc:
-                import traceback
-                sys.stderr.write(f"[!!!] EXCEPTION in run_graph_blocking: {exc}\n")
-                traceback.print_exc()
+            except Exception:
                 graph_done.set()
                 raise
 
@@ -503,48 +566,60 @@ class AgentRunner:
         intent = result_state.get("intent")
         scored_places: list[ScoredPlace] = result_state.get("scored_places") or []
 
-        # Non-food intent or empty results — still call LLM for a natural response
-        if not scored_places or intent is None:
+        self._final_places = scored_places
+
+        # Determine places context based on results
+        if scored_places:
+            # Success: we have places to show
+            places_context = self._build_places_context(scored_places)
+            agent_logger.info(
+                "runner_run_v2_places_ready",
+                user_id=self.user_id,
+                session_id=self.session_id,
+                places_count=len(scored_places),
+            )
+        elif intent == "find_restaurant":
+            # Food query but no places found - provide empty context
+            places_context = ""
+            agent_logger.info(
+                "runner_v2_no_places_found",
+                intent=intent,
+                user_id=self.user_id,
+                session_id=self.session_id,
+            )
+        else:
+            # Non-food intent or general conversation
+            places_context = ""
             agent_logger.info(
                 "runner_v2_non_food_intent",
                 intent=intent,
-                places_count=len(scored_places),
                 user_id=self.user_id,
+                session_id=self.session_id,
             )
-            # Stream LLM response token-by-token (same pattern as _run_v1)
-            final_text = ""
-            token_count = 0
-            async for token in llm_client.generate_response(
-                user_message, places_context="", model=model
-            ):
-                final_text += token
-                token_count += 1
-                yield {"type": "token", "data": token}
-            agent_logger.info("runner_v2_token_stream_done", user_id=self.user_id, session_id=self.session_id, token_count=token_count, final_text_len=len(final_text))
-            yield {"type": "final_text", "text": final_text}
-            yield {"type": "done", "data": {"places": []}}
-            return
 
-        self._final_places = scored_places
-
-        places_context = self._build_places_context(scored_places)
-
-        agent_logger.info(
-            "runner_run_v2_places_ready",
-            user_id=self.user_id,
-            session_id=self.session_id,
-            places_count=len(scored_places),
-        )
-
-        # Stream LLM tokens
+        # Stream LLM response (only called once now)
         final_text = ""
         async for token in llm_client.generate_response(
-            user_message, places_context, model=model
+            user_message, places_context, model=model, history=history
         ):
             final_text += token
             yield {"type": "token", "data": token}
 
         yield {"type": "final_text", "text": final_text}
+
+        # Log the final assistant response
+        step_logger = get_agent_step_logger(self.session_id)
+        log_agent_step(
+            step_logger,
+            step=5,  # After scoring step
+            phase="response",
+            model=model or "unknown",
+            version="v2",
+            user_id=self.user_id,
+            session_id=self.session_id,
+            # Truncate for logging
+            message=f"[Final Response] {final_text[:500]}",
+        )
 
         agent_logger.info(
             "runner_run_v2_complete",
@@ -553,10 +628,13 @@ class AgentRunner:
             places_count=len(scored_places),
         )
 
+        yield {"type": "done", "data": {"places": scored_places}}
+
     async def _run_no_tools(
         self,
         user_message: str,
         model: str | None = None,
+        history: list[dict] | None = None,
     ) -> AsyncGenerator[dict, None]:
         """LLM-only version — no tool calls."""
         effective_model = model or self.model or "default"
@@ -583,7 +661,7 @@ class AgentRunner:
         # Stream the full LLM response as tokens
         final_text = ""
         async for token in llm_client.generate_response(
-            user_message, places_context="", model=effective_model
+            user_message, places_context="", model=effective_model, history=history
         ):
             final_text += token
             yield {"type": "token", "data": token}
@@ -595,6 +673,8 @@ class AgentRunner:
             user_id=self.user_id,
             session_id=self.session_id,
         )
+
+        yield {"type": "done", "data": {"places": []}}
 
     # ── Private helpers ─────────────────────────────────────────────────────────
 
@@ -653,6 +733,7 @@ class AgentRunner:
 
 
 # ── Helper for run_compare ──────────────────────────────────────────────────────
+
 
 async def _collect_version(
     name: str,

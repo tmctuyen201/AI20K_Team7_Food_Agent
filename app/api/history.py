@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import json
 from datetime import datetime
+from pathlib import Path
 
-from fastapi import APIRouter, Query, status
+from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
 from app.core.logging import get_logger
@@ -25,6 +27,17 @@ class SelectionRequest(BaseModel):
 class SelectionResponse(BaseModel):
     success: bool
     message: str
+
+
+class ChatMessage(BaseModel):
+    timestamp: str
+    role: str = Field(..., pattern="^(user|assistant)$")
+    content: str
+
+
+class ChatHistoryResponse(BaseModel):
+    session_id: str
+    messages: list[ChatMessage]
 
 
 @router.get("/api/history/{user_id}")
@@ -101,3 +114,68 @@ async def save_selection(request: SelectionRequest) -> SelectionResponse:
         users_store.set(request.user_id, user_data)
 
     return SelectionResponse(success=True, message="Selection saved")
+
+
+@router.get("/api/chat-history/{session_id}", response_model=ChatHistoryResponse)
+async def get_chat_history(session_id: str) -> ChatHistoryResponse:
+    """Load chat history for a specific session from JSONL log file."""
+    log_file = Path(__file__).parent.parent.parent / "logs" / f"agent_{session_id}.jsonl"
+    
+    if not log_file.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Chat history not found for session {session_id}"
+        )
+    
+    messages = []
+    
+    try:
+        with open(log_file, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                
+                try:
+                    entry = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                
+                # Extract user messages from agent.step events
+                if entry.get("event") == "agent.step":
+                    message = entry.get("message", "")
+                    timestamp = entry.get("timestamp", "")
+                    
+                    # Check if this is a user message (parsing intent)
+                    if message.startswith("[Step 1] Parsing intent from:"):
+                        user_content = message.replace("[Step 1] Parsing intent from:", "").strip()
+                        if user_content:
+                            messages.append(ChatMessage(
+                                timestamp=timestamp,
+                                role="user",
+                                content=user_content
+                            ))
+                    
+                    # Check if this is an assistant response
+                    elif message.startswith("[Final Response]"):
+                        assistant_content = message.replace("[Final Response]", "").strip()
+                        if assistant_content:
+                            messages.append(ChatMessage(
+                                timestamp=timestamp,
+                                role="assistant",
+                                content=assistant_content
+                            ))
+    
+    except Exception as e:
+        logger.error("error_reading_chat_history", session_id=session_id, error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error reading chat history: {str(e)}"
+        )
+    
+    logger.info("chat_history_loaded", session_id=session_id, message_count=len(messages))
+    
+    return ChatHistoryResponse(
+        session_id=session_id,
+        messages=messages
+    )

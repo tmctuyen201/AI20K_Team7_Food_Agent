@@ -46,6 +46,9 @@ export default function App() {
     createNewChat,
     deleteChatSession,
     loadChatSession,
+    chatHistory,
+    chatHistoryLoading,
+    chatHistoryError,
   } = useChat();
 
   const [input, setInput] = useState('');
@@ -195,6 +198,9 @@ export default function App() {
         selectedModel={selectedModel}
         selectedVersion={selectedVersion}
         isComparing={isComparing}
+        chatHistory={chatHistory}
+        chatHistoryLoading={chatHistoryLoading}
+        chatHistoryError={chatHistoryError}
         onToggle={() => setShowSidebar(!showSidebar)}
         onNewChat={createNewChat}
         onSelectSession={loadChatSession}

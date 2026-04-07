@@ -45,7 +45,7 @@ def get_tool_definitions() -> list[dict]:
         {
             "type": "function",
             "function": {
-                "name": "Search Places API",
+                "name": "search_places_api",
                 "description": "Tìm kiếm quán ăn qua Google Maps dựa trên tọa độ và từ khóa. Trả về JSON gồm: tên, đánh giá, địa chỉ, khoảng cách và giá cả.",
                 "parameters": {
                 "type": "object",

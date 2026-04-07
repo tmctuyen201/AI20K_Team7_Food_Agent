@@ -898,6 +898,102 @@ select  { font-family: var(--font); }
 .session-item:hover .session-delete { opacity: 1; }
 .session-delete:hover { background: var(--error-bg); color: var(--error); }
 
+/* Chat History */
+.sidebar-chat-history {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  padding: 12px 16px;
+  gap: 8px;
+  border-top: 1px solid var(--border-light);
+  margin-top: 8px;
+  padding-top: 16px;
+}
+.sidebar-chat-history::-webkit-scrollbar { width: 4px; }
+.sidebar-chat-history::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+.chat-history-error {
+  text-align: center;
+  padding: 16px 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  color: var(--error);
+}
+.chat-history-error span { font-size: 1.4rem; }
+.chat-history-error p { font-size: 0.8rem; }
+
+.chat-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.chat-history-empty {
+  text-align: center;
+  padding: 24px 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.chat-history-empty span { font-size: 1.8rem; }
+.chat-history-empty p { font-size: 0.8rem; color: var(--text-faint); }
+
+.chat-history-item {
+  padding: 8px 10px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-light);
+  background: var(--surface-raised);
+}
+
+.chat-history-item--user {
+  border-color: var(--primary);
+  background: var(--primary-light);
+}
+
+.chat-history-item--assistant {
+  border-color: var(--success);
+  background: var(--success-light);
+}
+
+.chat-history-item-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.chat-history-role {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.chat-history-time {
+  font-size: 0.68rem;
+  color: var(--text-faint);
+}
+
+.chat-history-content {
+  font-size: 0.8rem;
+  color: var(--text);
+  line-height: 1.4;
+  word-wrap: break-word;
+}
+
+.loading-indicator {
+  font-size: 0.8rem;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
 /* ══════════════════════════════════════════════════════════════
    COMPARE OVERLAY / MODAL
 ══════════════════════════════════════════════════════════════ */

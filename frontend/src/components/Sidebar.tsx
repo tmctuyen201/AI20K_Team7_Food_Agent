@@ -1,4 +1,4 @@
-import type { ChatSession, AgentVersion } from "../types";
+import type { ChatSession, AgentVersion, ChatHistoryMessage } from "../types";
 
 const MODELS = [
   { value: "gpt-4o-mini", label: "GPT-4o Mini" },
@@ -28,6 +28,9 @@ interface Props {
   selectedModel: string;
   selectedVersion: AgentVersion;
   isComparing: boolean;
+  chatHistory: ChatHistoryMessage[];
+  chatHistoryLoading: boolean;
+  chatHistoryError: string | null;
   onToggle: () => void;
   onNewChat: () => void;
   onSelectSession: (id: string) => void;
@@ -44,6 +47,9 @@ export default function Sidebar({
   selectedModel,
   selectedVersion,
   isComparing,
+  chatHistory,
+  chatHistoryLoading,
+  chatHistoryError,
   onToggle,
   onNewChat,
   onSelectSession,
@@ -157,6 +163,51 @@ export default function Sidebar({
                   >
                     ✕
                   </button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Chat History */}
+          <div className="sidebar-chat-history">
+            <div className="sidebar-section-title">
+              <span>Lịch sử trò chuyện</span>
+              {chatHistoryLoading && <span className="loading-indicator">⏳</span>}
+            </div>
+
+            {chatHistoryError && (
+              <div className="chat-history-error">
+                <span>❌</span>
+                <p>Lỗi tải lịch sử: {chatHistoryError}</p>
+              </div>
+            )}
+
+            <div className="chat-history-list">
+              {chatHistory.length === 0 && !chatHistoryLoading && !chatHistoryError && (
+                <div className="chat-history-empty">
+                  <span>💬</span>
+                  <p>Chưa có tin nhắn nào</p>
+                </div>
+              )}
+              {chatHistory.map((msg, index) => (
+                <div
+                  key={index}
+                  className={`chat-history-item chat-history-item--${msg.role}`}
+                >
+                  <div className="chat-history-item-header">
+                    <span className="chat-history-role">
+                      {msg.role === 'user' ? '👤 Bạn' : '🤖 AI'}
+                    </span>
+                    <span className="chat-history-time">
+                      {new Date(msg.timestamp).toLocaleTimeString('vi-VN', {
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })}
+                    </span>
+                  </div>
+                  <div className="chat-history-content">
+                    {msg.content}
+                  </div>
                 </div>
               ))}
             </div>
