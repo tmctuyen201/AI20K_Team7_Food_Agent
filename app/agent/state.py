@@ -1,35 +1,30 @@
-"""ReAct Agent state definition."""
+"""LangGraph agent state definition."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import TypedDict
+from dataclasses import dataclass
+from typing import TypedDict, Optional
+
+from app.db.models import LatLng, Place, ScoredPlace
 
 
-class AgentState(TypedDict, total=False):
-    """Shared state across ReAct loop iterations."""
+class AgentState(TypedDict):
+    """Shared state passed between LangGraph nodes."""
 
     user_id: str
     session_id: str
     user_message: str
-    intent: str | None
-    location: dict | None
-    headers: dict | None
-    keyword: str | None
-    sort_by: str
-    radius: int
-    open_now: bool
-    places_raw: list[dict]
-    places_scored: list[dict]
-    tool_calls: list[dict]
-    rejection_count: int
-    guardrail_triggered: str | None
-    guardrail_message: str | None
-    final_response: str | None
-    is_done: bool
-    next_page_token: str | None
+    intent: Optional[str]
+    location: Optional[LatLng]
+    keyword: Optional[str]
+    places: list[Place]
+    scored_places: list[ScoredPlace]
     shown_place_ids: list[str]
-    error: str | None
+    rejection_count: int
+    next_page_token: Optional[str]
+    last_radius: int
+    messages: list[str]
+    is_complete: bool
 
 
 @dataclass
@@ -38,6 +33,6 @@ class ToolCall:
 
     tool_name: str
     arguments: dict
-    result: str | None = None
-    error: str | None = None
-    duration_ms: float | None = None
+    result: Optional[str] = None
+    error: Optional[str] = None
+    duration_ms: Optional[float] = None

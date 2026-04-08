@@ -1,0 +1,68 @@
+{
+  "selections": [
+    {
+      "user_id": "u01",
+      "place_id": "ChIJj6p2sIurNTERSNxztwTKyG8",
+      "name": "Hà Phở Bò",
+      "cuisine_type": "phở",
+      "rating": 4.8,
+      "selected_at": "2026-04-06T11:01:54.733461"
+    },
+    {
+      "user_id": "u01",
+      "place_id": "test_place_1",
+      "name": "Test Restaurant",
+      "cuisine_type": "phở",
+      "rating": 4.5,
+      "selected_at": "2026-04-06T10:34:25.778880"
+    },
+    {
+      "user_id": "u01",
+      "place_id": "ChIJq-sX-aerNTERFPF3qifBlqY",
+      "name": "Phở bò Cô Hoa",
+      "cuisine_type": "phở",
+      "rating": 4.8,
+      "selected_at": "2026-04-06T14:23:50.169696"
+    },
+    {
+      "user_id": "u01",
+      "place_id": "ChIJZffLLpurNTERqHpBfDeagHQ",
+      "name": "Phở Bình - bún bò huế",
+      "cuisine_type": "phở",
+      "rating": 4.7,
+      "selected_at": "2026-04-06T10:44:51.039545"
+    },
+    {
+      "user_id": "u05",
+      "place_id": "ChIJ5xEqe7x6SjERNiFwhLZizuQ",
+      "name": "Quán Cơm Yến Quý",
+      "cuisine_type": "cơm",
+      "rating": 5.0,
+      "selected_at": "2026-04-06T10:46:42.639788"
+    },
+    {
+      "user_id": "u01",
+      "place_id": "ChIJo3U09UWrNTERdDzGJjky0a0",
+      "name": "Khoa Cương - Cơm Ngon - Kẹo Lạc Giòn",
+      "cuisine_type": "cơm",
+      "rating": 5.0,
+      "selected_at": "2026-04-06T10:48:09.725770"
+    },
+    {
+      "user_id": "u01",
+      "place_id": "ChIJEQQnpbmrNTERyZhGkrc6wJU",
+      "name": "Cá Cảnh Ngọc Hiếu",
+      "cuisine_type": "cá",
+      "rating": 5.0,
+      "selected_at": "2026-04-06T11:04:49.438934"
+    },
+    {
+      "user_id": "u01",
+      "place_id": "ChIJMXW5Y-irNTERKcookkmD3KM",
+      "name": "Phở ông Đào",
+      "cuisine_type": "phở",
+      "rating": 4.7,
+      "selected_at": "2026-04-06T14:22:51.113954"
+    }
+  ]
+}

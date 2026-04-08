@@ -1,72 +1,96 @@
-"""MongoDB connection management using Motor (async driver)."""
+"""JSON file-based storage — no MongoDB required."""
 
 from __future__ import annotations
 
-from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
+import json
+import threading
+from pathlib import Path
+from typing import Any
 
-from app.core.config import settings
+from app.core.logging import get_logger
 
-logger = None
+logger = get_logger("foodie.db.connection")
 
+_DATA_DIR = Path(__file__).parent.parent.parent / "data"
+_DATA_DIR.mkdir(exist_ok=True)
 
-def _get_logger():
-    global logger
-    if logger is None:
-        from app.core.logging import get_logger
-        logger = get_logger("foodie.db")
-    return logger
-
-
-class Database:
-    client: AsyncIOMotorClient | None = None
-    db_name: str = "foodie"
+_USERS_FILE = _DATA_DIR / "users.json"
+_SESSIONS_FILE = _DATA_DIR / "sessions.json"
+_SELECTIONS_FILE = _DATA_DIR / "selections.json"
 
 
-_db = Database()
+class _JSONStore:
+    """Thread-safe JSON file storage."""
+
+    def __init__(self, filepath: Path) -> None:
+        self._filepath = filepath
+        self._lock = threading.Lock()
+        self._ensure_file()
+
+    def _ensure_file(self) -> None:
+        if not self._filepath.exists():
+            self._filepath.write_text("{}", encoding="utf-8")
+
+    def _read(self) -> dict[str, Any]:
+        with self._lock:
+            try:
+                return json.loads(self._filepath.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, FileNotFoundError):
+                return {}
+
+    def _write(self, data: dict[str, Any]) -> None:
+        with self._lock:
+            self._filepath.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    def get(self, key: str, default: Any = None) -> Any:
+        return self._read().get(key, default)
+
+    def set(self, key: str, value: Any) -> None:
+        data = self._read()
+        data[key] = value
+        self._write(data)
+
+    def delete(self, key: str) -> None:
+        data = self._read()
+        data.pop(key, None)
+        self._write(data)
+
+    def items(self) -> list[tuple[str, Any]]:
+        return list(self._read().items())
+
+    def values(self) -> list[Any]:
+        return list(self._read().values())
+
+    def keys(self) -> list[str]:
+        return list(self._read().keys())
+
+    def __contains__(self, key: str) -> bool:
+        return key in self._read()
+
+    def __len__(self) -> int:
+        return len(self._read())
+
+
+# Per-collection stores
+users_store = _JSONStore(_USERS_FILE)
+sessions_store = _JSONStore(_SESSIONS_FILE)
+selections_store = _JSONStore(_SELECTIONS_FILE)
 
 
 async def connect_db() -> None:
-    """Initialise the MongoDB client and create indexes."""
-    _db.client = AsyncIOMotorClient(settings.mongodb_uri)
-    log = _get_logger()
-    log.info("mongodb_connecting", uri=settings.mongodb_uri)
-
-    # Resolve the actual database name from the URI path component
-    # e.g. "mongodb://host:27017/foodie_agent"  ->  "foodie_agent"
-    uri_db = _resolve_db_name(settings.mongodb_uri)
-    if uri_db:
-        _db.db_name = uri_db
-
-    # Create indexes
-    db = _db.client[_db.db_name]
-    await db.users.create_index("user_id", unique=True)
-    await db.sessions.create_index("session_id", unique=True)
-    await db.selections.create_index([("user_id", 1), ("place_id", 1)], unique=True)
-    await db.selections.create_index([("user_id", 1), ("selected_at", -1)])
-
-    log.info("mongodb_connected", database=_db.db_name)
+    """Initialise JSON stores (no-op, files are created on demand)."""
+    logger.info("json_store_initialized", data_dir=str(_DATA_DIR))
 
 
 async def close_db() -> None:
-    """Close the MongoDB client."""
-    if _db.client:
-        _db.client.close()
-        _get_logger().info("mongodb_closed")
+    """No-op for JSON storage."""
+    logger.info("json_store_closed")
 
 
-def get_db() -> AsyncIOMotorDatabase:
-    """Return the foodie database instance."""
-    if _db.client is None:
-        raise RuntimeError("Database not connected. Call connect_db() first.")
-    return _db.client[_db.db_name]
-
-
-def _resolve_db_name(uri: str) -> str | None:
-    """Extract database name from a MongoDB URI string."""
-    # URI format: mongodb://host:port/DBNAME
-    parts = uri.rsplit("/", 1)
-    if len(parts) == 2 and parts[1]:
-        # Strip any trailing options (query string)
-        db_part = parts[1].split("?")[0]
-        return db_part if db_part else None
-    return None
+def get_db() -> dict[str, _JSONStore]:
+    """Return all stores for compatibility."""
+    return {
+        "users": users_store,
+        "sessions": sessions_store,
+        "selections": selections_store,
+    }

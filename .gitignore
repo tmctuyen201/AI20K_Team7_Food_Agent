@@ -2,7 +2,7 @@
 .env
 .env.local
 .env.production
-
+.vite
 # Python
 __pycache__/
 *.py[cod]
@@ -35,3 +35,6 @@ htmlcov/
 # OS
 .DS_Store
 Thumbs.db
+__node_modules__/
+node_modules/
+.vite

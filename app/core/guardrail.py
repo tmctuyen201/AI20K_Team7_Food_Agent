@@ -28,9 +28,11 @@ def check_guardrails(state: AgentState) -> GuardrailResult:
     Returns GuardrailResult indicating if a guardrail was triggered.
     """
     checkers = [
+        _check_ambiguous_location,
         _check_zero_results,
         _check_max_retries,
         _check_midnight_filter,
+        _check_mock_location,
     ]
 
     for checker in checkers:
@@ -41,68 +43,106 @@ def check_guardrails(state: AgentState) -> GuardrailResult:
     return GuardrailResult()
 
 
-def check_irrelevant_input(state: AgentState) -> GuardrailResult:
-    """Irrelevant Input guardrail: input does not relate to food/restaurants."""
-    keyword = state.get("keyword", "").strip().lower()
-    
-    if not keyword:
-        return GuardrailResult()
-    
-    # Food, location, and time-related keywords to match
-    food_keywords = [
-        "quán", "nhà hàng", "cơm", "phở", "bánh", "nước", "cà phê", "trà",
-        "ăn", "uống", "kem", "pizza", "mì", "bún", "cơm tấm", "lẩu",
-        "noodles", "restaurant", "food", "cafe", "coffee", "drink",
-        "pizza", "burger", "steak", "sushi", "ramen", "shop",
-    ]
-    location_keywords = [
-        "quận", "huyện", "thành phố", "tp", "phường", "đường", "street", "district", "ward", "city", "address", "gần", "bên cạnh", "khu vực", "location", "ở đâu", "near", "close to", "vị trí"
-    ]
-    greeting_keywords = [
-        "xin chào","xin chao", "chào", "hello", "hi", "hey", "alo", "bạn là ai", "bạn làm gì", "help", "trợ giúp", "hướng dẫn", "bạn khỏe không", "good morning", "good afternoon", "good evening", "good night", "greetings", "mình muốn hỏi", "cho hỏi", "tôi muốn hỏi"
-    ]
+# ── Individual guardrail checkers ──────────────────────────────────────────────
 
-    # Nếu là câu chào/hỏi thì không kích hoạt guardrail
-    if any(greet in keyword for greet in greeting_keywords):
+def _check_ambiguous_location(state: AgentState) -> GuardrailResult:
+    """Ambiguous Location guardrail: confidence too low or multiple matches possible."""
+    if not state.get("ambiguous_location"):
         return GuardrailResult()
 
-    # Check if keyword contains any relevant term
-    if not (
-        any(food_term in keyword for food_term in food_keywords)
-        or any(loc_term in keyword for loc_term in location_keywords)
-    ):
-        logger.warning(
-            "guardrail_irrelevant_input",
-            keyword=keyword,
-            user_id=state.get("user_id"),
-        )
-        return GuardrailResult(
-            triggered=True,
-            name="Irrelevant Input",
-            message=(
-                f"Câu hỏi của bạn không liên quan đến quán ăn, địa điểm hoặc thời gian. "
-                "Bạn muốn tìm kiếm loại quán ăn, khu vực hoặc thời gian cụ thể nào không? "
-                "(Ví dụ: phở quận 1, pizza tối nay, cà phê gần đây, ...)"
-            ),
-        )
-    return GuardrailResult()
+    logger.warning(
+        "guardrail_ambiguous_location",
+        confidence=state.get("location_confidence", 0),
+        user_id=state.get("user_id"),
+    )
+    return GuardrailResult(
+        triggered=True,
+        name="Ambiguous Location",
+        message=(
+            "Mình chưa xác định chính xác khu vực của bạn. "
+            "Bạn có thể cho biết rõ hơn địa chỉ hoặc thành phố/quận bạn đang ở không?"
+        ),
+    )
+
+
+def _check_mock_location(state: AgentState) -> GuardrailResult:
+    """Mock Location guardrail: used mock data when no GPS/headers available."""
+    location = state.get("location")
+    # location can be a LatLng pydantic model, a dict, or None
+    if hasattr(location, "source"):
+        source = location.source
+    elif isinstance(location, dict):
+        source = location.get("source", "")
+    else:
+        source = ""
+    source = source or state.get("location_source", "")
+
+    if source != "mock_data":
+        return GuardrailResult()
+
+    # Only trigger if the user hasn't confirmed the address already
+    if state.get("address_confirmed"):
+        return GuardrailResult()
+
+    logger.warning(
+        "guardrail_mock_location",
+        user_id=state.get("user_id"),
+        source=source,
+    )
+    return GuardrailResult(
+        triggered=True,
+        name="Mock Location",
+        message=(
+            "Mình chưa xác định được vị trí chính xác của bạn. "
+            "Bạn có thể cho biết địa chỉ hoặc khu vực đang ở không?"
+        ),
+    )
 
 
 def _check_zero_results(state: AgentState) -> GuardrailResult:
     """Zero Result guardrail: API returned no results."""
-    places = state.get("places_raw", [])
-    if not places and state.get("keyword"):
+    # v2 pipeline stores places as "places" (list) + "scored_places" (top-5)
+    # async/stream pipeline uses "places_raw" (dict list) + "places_scored"
+    # Guard checks all keys so either pipeline path triggers correctly
+    places_raw = state.get("places_raw", [])
+    places_v2 = state.get("places", [])
+    scored = state.get("scored_places", [])
+    places_scored = state.get("places_scored", [])
+
+    places: list = places_raw or places_v2 or scored or places_scored
+
+    # DEBUG
+    logger.debug(
+        "zero_check",
+        places_raw_len=len(places_raw),
+        places_v2_len=len(places_v2),
+        scored_len=len(scored),
+        places_scored_len=len(places_scored),
+        keyword=state.get("keyword", ""),
+        will_trigger=not places and bool(state.get("keyword")),
+    )
+
+    keyword = state.get("keyword", "")
+
+    # Only trigger if search has actually run — guardrail fires during the
+    # location-only check before search_places() is even called
+    if state.get("search_done") is not True:
+        return GuardrailResult()
+
+    if not places and keyword:
         logger.warning(
             "guardrail_zero_results",
-            keyword=state.get("keyword"),
+            keyword=keyword,
             user_id=state.get("user_id"),
         )
         return GuardrailResult(
             triggered=True,
             name="Zero Result",
             message=(
-                f"Không tìm thấy quán nào với từ khóa '{state.get('keyword')}' "
-                "trong khu vực này. Bạn muốn thử từ khóa khác hoặc tăng bán kính tìm kiếm không?"
+                f"Không tìm thấy quán nào với từ khóa '{keyword}' "
+                "trong bán kính 2km quanh đây.\n\n"
+                "Bạn có muốn mình mở rộng tìm kiếm ra 10km hoặc thử từ khóa khác "
+                "(như cơm, bún, hải sản) không?"
             ),
         )
     return GuardrailResult()
@@ -121,9 +161,9 @@ def _check_max_retries(state: AgentState) -> GuardrailResult:
             triggered=True,
             name="Max Retries",
             message=(
-                "Bạn đã không hài lòng với nhiều gợi ý. "
-                "Bạn có thể cho tôi biết thêm về ngân sách, "
-                "phong cách quán, hoặc khu vực bạn muốn không?"
+                "Dường như mình chưa tìm đúng gu của bạn. "
+                "Để chính xác hơn, bạn thích không gian như thế nào "
+                "(vỉa hè / sang trọng / bình dân) hoặc ngân sách khoảng bao nhiêu?"
             ),
         )
     return GuardrailResult()
@@ -132,28 +172,64 @@ def _check_max_retries(state: AgentState) -> GuardrailResult:
 def _check_midnight_filter(state: AgentState) -> GuardrailResult:
     """Midnight Filter: warn if few places are open (22:00 - 05:00)."""
     from datetime import datetime
+
     hour = datetime.now().hour
-    if not (22 <= hour or hour < 5):
+    # Late night / early morning: 22h - 5h
+    if not (hour >= 22 or hour < 5):
         return GuardrailResult()
 
-    places = state.get("places_raw", [])
-    open_places = [
-        p for p in places
-        if p.get("opening_hours", {}).get("open_now") is True
-    ]
+    # Guard checks all key variants so either pipeline path triggers correctly
+    places_raw = state.get("places_raw", [])
+    places_v2 = state.get("places", [])
+    scored = state.get("scored_places", [])
+    places_scored = state.get("places_scored", [])
+    places: list = places_raw or places_v2 or scored or places_scored
 
-    if places and len(open_places) < 5:
-        logger.warning(
-            "guardrail_midnight_filter",
-            open_count=len(open_places),
-            total_count=len(places),
+    if not places:
+        return GuardrailResult()
+
+    # Only trigger if search has actually run
+    if state.get("search_done") is not True:
+        return GuardrailResult()
+
+    # open_now lives at the top-level of Place dicts and ScoredPlace objects
+    def _is_open(p) -> bool:
+        return bool(
+            getattr(p, "open_now", None) is True
+            or (isinstance(p, dict) and p.get("open_now") is True)
+            or (isinstance(p, dict) and p.get("opening_hours", {}).get("open_now") is True)
         )
-        return GuardrailResult(
-            triggered=True,
-            name="Midnight Filter",
-            message=(
-                f"Hiện tại chỉ có {len(open_places)} quán đang mở cửa. "
-                "Bạn có muốn xem danh sách này hay đợi đến sáng?"
-            ),
+
+    open_places = [p for p in places if _is_open(p)]
+
+    total = len(places)
+    open_count = len(open_places)
+
+    if open_count >= 5:
+        return GuardrailResult()
+
+    logger.warning(
+        "guardrail_midnight_filter",
+        open_count=open_count,
+        total_count=total,
+        hour=hour,
+    )
+
+    # Only 1-2 places open — suggest alternatives
+    if open_count == 0:
+        message = (
+            f"Hiện tại đã muộn ({hour}h), không có quán nào đang mở cửa. "
+            "Bạn có muốn mình tìm các quán ăn đêm/vỉa hè gần đây không?"
         )
-    return GuardrailResult()
+    else:
+        open_names = ", ".join([p.get("name", "") for p in open_places[:2]])
+        message = (
+            f"Hiện tại đã muộn ({hour}h), chỉ có {open_count} quán đang mở: {open_names}. "
+            "Bạn có muốn mình tìm thêm các quán ăn đêm/vỉa hè khác cho bạn không?"
+        )
+
+    return GuardrailResult(
+        triggered=True,
+        name="Midnight Filter",
+        message=message,
+    )

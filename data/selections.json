@@ -1,0 +1,18 @@
+{
+  "u01:ChIJj6p2sIurNTERSNxztwTKyG8": {
+    "user_id": "u01",
+    "place_id": "ChIJj6p2sIurNTERSNxztwTKyG8",
+    "name": "Hà Phở Bò",
+    "cuisine_type": "phở",
+    "rating": 4.8,
+    "selected_at": "2026-04-06T10:19:39.516590"
+  },
+  "u01:ChIJcedeLPerNTERDA8DsdSN10g": {
+    "user_id": "u01",
+    "place_id": "ChIJcedeLPerNTERDA8DsdSN10g",
+    "name": "Phở Gà Huyền Hương",
+    "cuisine_type": "phở",
+    "rating": 4.7,
+    "selected_at": "2026-04-06T10:23:49.194139"
+  }
+}
